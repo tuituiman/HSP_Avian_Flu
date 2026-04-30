@@ -32,7 +32,7 @@ def login_page():
         # อ่านข้อมูลจากชีต Users
         df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=0)
     except Exception as e:
-        st.error("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ โปรดตรวจสอบการตั้งค่า secrets.toml และสิทธิ์การแชร์ Sheet")
+        st.error(f"รายละเอียด Error จากระบบ: {e}")
         st.stop()
 
     col1, col2, col3 = st.columns([1, 2, 1])
