@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
-from datetime import datetime
 
 # ---------------------------------------------------------
 # ตั้งค่าหน้าเพจ & URL ฐานข้อมูล
@@ -16,6 +15,8 @@ if 'username' not in st.session_state:
     st.session_state.username = ""
 if 'role' not in st.session_state:
     st.session_state.role = ""
+if 'main_role' not in st.session_state:
+    st.session_state.main_role = ""
 if 'eoc_status' not in st.session_state:
     st.session_state.eoc_status = "Watch Mode (เฝ้าระวังปกติ)"
 
@@ -29,7 +30,10 @@ def login_page():
     st.markdown("สำนักงานป้องกันควบคุมโรคที่ 1 เชียงใหม่ (กรณีโรคไข้หวัดนก)")
     
     try:
+        # โหลดข้อมูลชีต Users
         df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=0)
+        # ตรวจสอบและบังคับชื่อคอลัมน์ให้ลบช่องว่างส่วนเกินเผื่อไว้
+        df_users.columns = df_users.columns.str.strip()
     except Exception as e:
         st.error(f"⚠️ ตรวจพบ Error จากระบบหลังบ้าน: {e}")
         st.stop()
@@ -43,14 +47,17 @@ def login_page():
             submit_btn = st.form_submit_button("เข้าสู่ระบบ")
 
             if submit_btn:
-                df_users['password'] = df_users['password'].astype(str)
-                match = df_users[(df_users['username'] == input_user) & (df_users['password'] == str(input_pwd))]
+                # ป้องกัน Error หากรหัสผ่านเป็นตัวเลขล้วน
+                df_users['Password'] = df_users['Password'].astype(str)
+                # ค้นหา Username และ Password
+                match = df_users[(df_users['Username'] == input_user) & (df_users['Password'] == str(input_pwd))]
                 
                 if not match.empty:
                     st.success("เข้าสู่ระบบสำเร็จ!")
                     st.session_state.logged_in = True
                     st.session_state.username = input_user
-                    st.session_state.role = match.iloc[0]['role']
+                    st.session_state.role = match.iloc[0]['Role']
+                    st.session_state.main_role = match.iloc[0]['Main_Role']
                     st.rerun()
                 else:
                     st.error("❌ Username หรือ Password ไม่ถูกต้อง!")
@@ -62,12 +69,14 @@ def main_dashboard():
     # --- แถบ Sidebar ---
     st.sidebar.header("👤 ข้อมูลผู้ใช้งาน")
     st.sidebar.write(f"**Username:** {st.session_state.username}")
-    st.sidebar.write(f"**กลุ่มภารกิจ:** {st.session_state.role}")
+    st.sidebar.write(f"**สายงาน (Main Role):** {st.session_state.main_role}")
+    st.sidebar.write(f"**กลุ่มภารกิจ (Role):** {st.session_state.role}")
     
     if st.sidebar.button("🚪 ออกจากระบบ (Logout)"):
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.role = ""
+        st.session_state.main_role = ""
         st.rerun()
 
     st.title("🚨 EOC Action Plan: กรณีไข้หวัดนก (HSP 2568)")
@@ -75,7 +84,7 @@ def main_dashboard():
     # --- แสดง Status ของ EOC ---
     st.header("📊 สถานะศูนย์ปฏิบัติการตอบโต้ภาวะฉุกเฉิน")
     
-    if st.session_state.role == "IC (ผู้บัญชาการ)":
+    if st.session_state.role == "IC (ผู้บัญชาการ)" or st.session_state.role == "Admin":
         new_status = st.selectbox(
             "ปรับระดับสถานการณ์ EOC:", 
             ["Watch Mode (เฝ้าระวังปกติ)", "Alert Mode (เตรียมความพร้อม)", "Response Mode (ตอบโต้ฉุกเฉิน)", "Recovery Mode (ฟื้นฟู/หลังเกิดเหตุ)"],
@@ -126,23 +135,23 @@ def main_dashboard():
                 df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=0)
                 df_roles = conn.read(spreadsheet=SHEET_URL, worksheet="Role_Mapping", ttl=0)
                 
-                if df_users.empty:
-                    df_users = pd.DataFrame(columns=["username", "password", "role"])
+                df_users.columns = df_users.columns.str.strip()
+                df_roles.columns = df_roles.columns.str.strip()
                 
-                # เตรียมลิสต์ Role สำหรับให้เลือก
+                if df_users.empty:
+                    df_users = pd.DataFrame(columns=["Username", "Password", "Main_Role", "Role"])
+                
                 main_roles_list = df_roles["Main Role"].dropna().unique().tolist()
                 all_roles_list = df_roles["Role"].dropna().unique().tolist()
 
                 # --- โซน 1: ฟอร์มเพิ่มผู้ใช้ใหม่ (อัจฉริยะ) ---
                 with st.expander("➕ เพิ่มผู้ใช้งานใหม่ (Add New User)", expanded=True):
-                    st.markdown("ระบบจะกรอง **กลุ่มภารกิจ (Role)** ตาม **สายงาน (Main Role)** ที่คุณเลือกโดยอัตโนมัติ")
+                    st.markdown("ระบบจะกรอง **กลุ่มภารกิจ (Role)** ตาม **สายงาน (Main_Role)** ที่คุณเลือกโดยอัตโนมัติ")
                     
                     c1, c2 = st.columns(2)
                     with c1:
-                        # ผู้ใช้เลือก Main Role ก่อน (อยู่นอก Form เพื่อให้ dropdown ชั้นที่ 2 เปลี่ยนค่าตามได้ทันที)
-                        selected_main_role = st.selectbox("1. เลือกสายงาน (Main Role)", ["กรุณาเลือกสายงาน..."] + main_roles_list)
+                        selected_main_role = st.selectbox("1. เลือกสายงาน (Main_Role)", ["กรุณาเลือกสายงาน..."] + main_roles_list)
                     
-                    # กรอง Role ย่อยตาม Main Role ที่ถูกเลือก
                     filtered_roles = []
                     if selected_main_role != "กรุณาเลือกสายงาน...":
                         filtered_roles = df_roles[df_roles["Main Role"] == selected_main_role]["Role"].tolist()
@@ -150,17 +159,22 @@ def main_dashboard():
                     with c2:
                         selected_role = st.selectbox("2. เลือกกลุ่มภารกิจ (Role)", ["กรุณาเลือกกลุ่มภารกิจ..."] + filtered_roles)
 
-                    # รับค่า Username / Password
                     new_user = st.text_input("Username (ห้ามเว้นว่างและห้ามซ้ำ)")
                     new_pwd = st.text_input("Password", type="password")
                     
                     if st.button("บันทึกผู้ใช้ใหม่ลงฐานข้อมูล"):
                         if selected_role == "กรุณาเลือกกลุ่มภารกิจ..." or not new_user:
                             st.warning("⚠️ กรุณากรอก Username และเลือกกลุ่มภารกิจให้ครบถ้วน")
-                        elif new_user in df_users['username'].values:
+                        elif new_user in df_users['Username'].values:
                             st.error("❌ Username นี้มีในระบบแล้ว กรุณาใช้ชื่ออื่น")
                         else:
-                            new_data = pd.DataFrame([{"username": new_user, "password": new_pwd, "role": selected_role}])
+                            # บันทึกข้อมูลตามโครงสร้างคอลัมน์ใหม่
+                            new_data = pd.DataFrame([{
+                                "Username": new_user, 
+                                "Password": new_pwd, 
+                                "Main_Role": selected_main_role, 
+                                "Role": selected_role
+                            }])
                             updated_df = pd.concat([df_users, new_data], ignore_index=True)
                             conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=updated_df)
                             st.success(f"✅ สร้างบัญชี {new_user} ({selected_role}) สำเร็จ!")
@@ -177,14 +191,16 @@ def main_dashboard():
                     num_rows="dynamic",
                     use_container_width=True,
                     column_config={
-                        "username": st.column_config.TextColumn("Username", disabled=True), # ล็อกไว้ไม่ให้เปลี่ยนชื่อ User เดิม
-                        "password": st.column_config.TextColumn("Password"),
-                        "role": st.column_config.SelectboxColumn("Role (กลุ่มภารกิจ)", options=all_roles_list)
+                        "Username": st.column_config.TextColumn("Username", disabled=True),
+                        "Password": st.column_config.TextColumn("Password"),
+                        "Main_Role": st.column_config.SelectboxColumn("Main Role (สายงาน)", options=main_roles_list),
+                        "Role": st.column_config.SelectboxColumn("Role (กลุ่มภารกิจ)", options=all_roles_list)
                     }
                 )
                 
                 if st.button("💾 บันทึกการแก้ไขตาราง"):
-                    edited_users = edited_users.dropna(subset=['username'])
+                    # ลบแถวที่ Username ว่างเปล่าออกก่อนเซฟ
+                    edited_users = edited_users.dropna(subset=['Username'])
                     conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=edited_users)
                     st.success("✅ อัปเดตข้อมูลผู้ใช้งานลง Google Sheet เรียบร้อยแล้ว!")
                     st.rerun()
@@ -192,7 +208,7 @@ def main_dashboard():
             except Exception as e:
                 st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูล: {e}")
 
-    # (โค้ดสำหรับ Role อื่นๆ ยังคงเว้นโครงไว้เหมือนเดิม)
+    # (โค้ดสำหรับ Role อื่นๆ ยังคงเว้นโครงไว้)
     elif st.session_state.role == "IC (ผู้บัญชาการ)":
         with my_tabs[1]:
             st.markdown("**หน้าออกข้อสั่งการ:** (พื้นที่เตรียมพัฒนาต่อ...)")
