@@ -31,8 +31,8 @@ def login_page():
     st.markdown("สำนักงานป้องกันควบคุมโรคที่ 1 เชียงใหม่ (กรณีโรคไข้หวัดนก)")
     
     try:
-        # แก้ไขตรงนี้: เปลี่ยน ttl=0 เป็น ttl=10 (ให้จำข้อมูล 10 วินาที ช่วยลดโควตา)
-        df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=10)
+        # ✅ แก้เป็น ttl=600 (จำข้อมูล 10 นาที) เพื่อกันโควตาเต็ม
+        df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=600)
         df_users.columns = df_users.columns.str.strip()
     except Exception as e:
         st.error(f"⚠️ ตรวจพบ Error จากระบบหลังบ้าน: {e}")
@@ -70,7 +70,7 @@ def main_dashboard():
     st.sidebar.write(f"**กลุ่มภารกิจ (Role):** {st.session_state.role}")
     
     if st.sidebar.button("🚪 ออกจากระบบ (Logout)"):
-        st.cache_data.clear() # ล้างความจำก่อนออก
+        st.cache_data.clear() 
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.role = ""
@@ -125,12 +125,12 @@ def main_dashboard():
             st.header("⚙️ ระบบจัดการบัญชีผู้ใช้งาน (User Management)")
             
             try:
-                # แก้ไขตรงนี้: เพิ่ม ttl=10 เพื่อลดภาระการดึงข้อมูล
-                df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=10)
+                # ✅ ปรับเป็น ttl=600 (10 นาที) เพื่อลดการยิง API
+                df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=600)
                 df_users.columns = df_users.columns.str.strip()
                 
-                # Role_Mapping นานๆ เปลี่ยนที ให้จำไว้ 60 วินาทีเลย
-                df_roles_raw = conn.read(spreadsheet=SHEET_URL, worksheet="Role_Mapping", ttl=60)
+                # ✅ Role_Mapping แทบไม่มีการเปลี่ยน จำไว้ 10 นาทีเช่นกัน
+                df_roles_raw = conn.read(spreadsheet=SHEET_URL, worksheet="Role_Mapping", ttl=600)
                 df_roles_raw.columns = df_roles_raw.columns.str.strip()
                 
                 if 'Main Role' in df_roles_raw.columns and 'Role' in df_roles_raw.columns:
@@ -187,8 +187,10 @@ def main_dashboard():
                                 "Role": selected_role
                             }])
                             updated_df = pd.concat([df_users, new_data], ignore_index=True)
+                            
+                            # อัปเดตเสร็จแล้วสั่งล้างสมอง เพื่อให้ดึงข้อมูลใหม่ 1 ครั้ง
                             conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=updated_df)
-                            st.cache_data.clear() # <- พระเอกของเรา! สั่งล้างความจำทันทีหลังเซฟ เพื่อให้ระบบดึงข้อมูลใหม่
+                            st.cache_data.clear() 
                             st.success(f"✅ บันทึกบัญชี **{new_user}** ({selected_role}) ลง Database สำเร็จ!")
                             st.rerun()
 
@@ -213,7 +215,7 @@ def main_dashboard():
                 if st.button("💾 บันทึกการเปลี่ยนแปลงตาราง (Save Changes)"):
                     edited_users = edited_users.dropna(subset=['Username'])
                     conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=edited_users)
-                    st.cache_data.clear() # <- สั่งล้างความจำหลังแก้ไขตารางเสร็จ
+                    st.cache_data.clear() # อัปเดตเสร็จให้ล้างความจำ
                     st.success("✅ อัปเดตข้อมูลผู้ใช้งานลง Google Sheets เรียบร้อยแล้ว!")
                     st.rerun()
 
