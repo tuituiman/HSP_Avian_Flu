@@ -1,16 +1,16 @@
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
+from datetime import datetime
 
 # ---------------------------------------------------------
-# ตั้งค่าหน้าเพจ
+# ตั้งค่าหน้าเพจ & URL ฐานข้อมูล
 # ---------------------------------------------------------
 st.set_page_config(page_title="EOC สคร.1 เชียงใหม่ - ไข้หวัดนก", layout="wide")
 
-# ลิงก์ Google Sheet
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1newH4TiteAxJxKnikgI4L8TA1HRfLaXGB6iFFTBvApc/edit?gid=0#gid=0"
 
-# สร้าง Session State สำหรับเก็บข้อมูลการล็อกอินและสถานะ EOC
+# Session State สำหรับเก็บข้อมูลการล็อกอินและสถานะ EOC
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'username' not in st.session_state:
@@ -20,19 +20,19 @@ if 'role' not in st.session_state:
 if 'eoc_status' not in st.session_state:
     st.session_state.eoc_status = "Watch Mode (เฝ้าระวังปกติ)"
 
+conn = st.connection("gsheets", type=GSheetsConnection)
+
 # ---------------------------------------------------------
-# 1. หน้า Login (อ่านจากชีต Users)
+# 1. หน้า Login
 # ---------------------------------------------------------
 def login_page():
     st.title("🔐 เข้าสู่ระบบ EOC Command Center")
     st.markdown("สำนักงานป้องกันควบคุมโรคที่ 1 เชียงใหม่ (กรณีโรคไข้หวัดนก)")
     
-    conn = st.connection("gsheets", type=GSheetsConnection)
     try:
-        # อ่านข้อมูลจากชีต Users
         df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=0)
     except Exception as e:
-        st.error(f"รายละเอียด Error จากระบบ: {e}")
+        st.error(f"⚠️ ตรวจพบ Error จากระบบหลังบ้าน: {e}")
         st.stop()
 
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -44,29 +44,26 @@ def login_page():
             submit_btn = st.form_submit_button("เข้าสู่ระบบ")
 
             if submit_btn:
-                # ป้องกัน Error กรณีรหัสผ่านใน Sheet เป็นตัวเลข
                 df_users['password'] = df_users['password'].astype(str)
-                # กรองหา User/Password ที่ตรงกัน
                 match = df_users[(df_users['username'] == input_user) & (df_users['password'] == str(input_pwd))]
                 
                 if not match.empty:
                     st.success("เข้าสู่ระบบสำเร็จ!")
                     st.session_state.logged_in = True
                     st.session_state.username = input_user
-                    # เก็บ Role เพื่อนำไปใช้โชว์/ซ่อน Tab
-                    st.session_state.role = match.iloc[0]['role'] 
+                    st.session_state.role = match.iloc[0]['role']
                     st.rerun()
                 else:
                     st.error("❌ Username หรือ Password ไม่ถูกต้อง!")
 
 # ---------------------------------------------------------
-# หน้า Dashboard หลัก (หลัง Login ผ่าน)
+# 2. หน้า Dashboard หลัก
 # ---------------------------------------------------------
 def main_dashboard():
-    # --- แถบ Sidebar แสดงข้อมูลตัวเอง ---
+    # --- แถบ Sidebar ---
     st.sidebar.header("👤 ข้อมูลผู้ใช้งาน")
     st.sidebar.write(f"**Username:** {st.session_state.username}")
-    st.sidebar.write(f"**กลุ่มภารกิจ (Role):** {st.session_state.role}")
+    st.sidebar.write(f"**กลุ่มภารกิจ:** {st.session_state.role}")
     
     if st.sidebar.button("🚪 ออกจากระบบ (Logout)"):
         st.session_state.logged_in = False
@@ -76,12 +73,9 @@ def main_dashboard():
 
     st.title("🚨 EOC Action Plan: กรณีไข้หวัดนก (HSP 2568)")
     
-    # ---------------------------------------------------------
-    # 2. หน้าหลัก: แสดง Status ของ EOC
-    # ---------------------------------------------------------
+    # --- แสดง Status ของ EOC ---
     st.header("📊 สถานะศูนย์ปฏิบัติการตอบโต้ภาวะฉุกเฉิน")
     
-    # ระบบให้ IC เป็นคนเปลี่ยนสถานะได้ (ถ้า Role อื่นจะเห็นแค่สถานะอย่างเดียว เปลี่ยนไม่ได้)
     if st.session_state.role == "IC (ผู้บัญชาการ)":
         new_status = st.selectbox(
             "ปรับระดับสถานการณ์ EOC:", 
@@ -92,7 +86,6 @@ def main_dashboard():
             st.session_state.eoc_status = new_status
             st.rerun()
             
-    # แสดงแถบสีตามสถานะ EOC
     if "Watch" in st.session_state.eoc_status:
         st.info(f"🟢 สถานะปัจจุบัน: **{st.session_state.eoc_status}**")
     elif "Alert" in st.session_state.eoc_status:
@@ -104,58 +97,82 @@ def main_dashboard():
 
     st.divider()
 
-    # ---------------------------------------------------------
-    # 3. จัดการ Tab แบบ Dynamic (แสดงเฉพาะ Role ที่เกี่ยวข้อง)
-    # ---------------------------------------------------------
+    # --- จัดการ Tab ตาม Role ---
     st.subheader("กระดานปฏิบัติงาน")
     
-    # สร้าง List ของ Tab ที่ต้องการให้แสดง โดยเริ่มจาก Tab กลางที่ทุกคนต้องเห็น
     tabs_to_show = ["📍 ภาพรวมและประกาศ"]
     
-    # เพิ่ม Tab ตาม Role ที่ล็อกอินเข้ามา
-    if st.session_state.role == "IC (ผู้บัญชาการ)":
+    # เพิ่ม Tab ตามเงื่อนไข Role
+    if st.session_state.role == "Admin":
+        tabs_to_show.extend(["⚙️ จัดการผู้ใช้ (Admin)"])
+    elif st.session_state.role == "IC (ผู้บัญชาการ)":
         tabs_to_show.extend(["🗣️ ข้อสั่งการ (IC เท่านั้น)", "📈 ติดตามงานทุกกลุ่ม"])
-        
     elif st.session_state.role == "SAT":
         tabs_to_show.extend(["📝 ประเมิน Trigger Point", "📥 ส่งงาน SAT"])
-        
     elif st.session_state.role == "JIT":
         tabs_to_show.extend(["📥 ส่งงาน JIT"])
-        
     else:
-        # กลุ่มอื่นๆ ที่ยังไม่ได้กำหนดเงื่อนไข ให้เห็นแค่ส่งงานของตัวเอง
         tabs_to_show.extend([f"📥 ส่งงาน {st.session_state.role}"])
 
-    # สร้างชุดของ Tabs ขึ้นมาจริงๆ ตามเงื่อนไขด้านบน
     my_tabs = st.tabs(tabs_to_show)
     
-    # --- ใส่เนื้อหาในแต่ละ Tab (เว้นโครงไว้ก่อน) ---
+    # Tab 0: เนื้อหาที่ทุกคนเห็น
     with my_tabs[0]:
-        st.markdown("**หน้าประกาศทั่วไป:** ใช้แสดงข้อสั่งการหรือสรุปสถานการณ์ให้ทุกคนรับทราบ (รอพัฒนาต่อ...)")
+        st.markdown("**หน้าประกาศทั่วไป:** ใช้แสดงสรุปสถานการณ์ให้ทุกคนรับทราบ")
         
-    # เช็คว่าล็อกอินเป็นอะไร แล้วค่อยดึง Index ของ Tab มาใช้
-    if st.session_state.role == "IC (ผู้บัญชาการ)":
+    # Tab ถัดไป ขึ้นอยู่กับ Role
+    if st.session_state.role == "Admin":
         with my_tabs[1]:
-            st.markdown("**หน้าออกข้อสั่งการ:** (รอพัฒนาฟอร์มเขียนข้อความลง Database...)")
+            st.header("⚙️ ระบบจัดการบัญชีผู้ใช้งาน (User Management)")
+            st.info("💡 **วิธีใช้งาน:** แก้ไขรหัสผ่านได้โดยตรงในตาราง เพิ่มพนักงานใหม่ให้เลื่อนไปบรรทัดล่างสุดแล้วพิมพ์ได้เลย หากต้องการลบให้คลิกซ้ายที่หน้าแถวแล้วกดปุ่ม Delete (หรือ Backspace) บนคีย์บอร์ด เมื่อเสร็จแล้วต้องกดปุ่ม 'บันทึก' ด้านล่าง")
+            
+            # ดึงข้อมูล Users ใหม่สุดมาแสดงให้ Admin แก้ไข
+            try:
+                df_admin_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=0)
+                # ป้องกัน Error กรณีตารางว่าง
+                if df_admin_users.empty:
+                    df_admin_users = pd.DataFrame(columns=["username", "password", "role"])
+                
+                # ฟีเจอร์ data_editor อนุญาตให้เพิ่ม/ลบแถว (num_rows="dynamic")
+                edited_users = st.data_editor(
+                    df_admin_users,
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    column_config={
+                        "username": st.column_config.TextColumn("Username (ห้ามซ้ำ)"),
+                        "password": st.column_config.TextColumn("Password"),
+                        "role": st.column_config.SelectboxColumn("Role (กลุ่มภารกิจ)", options=["Admin", "IC (ผู้บัญชาการ)", "SAT", "JIT", "Logistics", "RC", "Liaison", "อื่นๆ"])
+                    }
+                )
+                
+                # ปุ่มบันทึกอัปเดตลง Google Sheet
+                if st.button("💾 บันทึกการเปลี่ยนแปลง (Save to Database)"):
+                    # ลบแถวที่ username ว่างเปล่าออกก่อนเซฟ (ป้องกันข้อมูลขยะ)
+                    edited_users = edited_users.dropna(subset=['username'])
+                    conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=edited_users)
+                    st.success("✅ อัปเดตข้อมูลผู้ใช้งานลง Google Sheet เรียบร้อยแล้ว!")
+                    
+            except Exception as e:
+                st.error(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}")
+
+    elif st.session_state.role == "IC (ผู้บัญชาการ)":
+        with my_tabs[1]:
+            st.markdown("**หน้าออกข้อสั่งการ:** (พื้นที่เตรียมพัฒนาต่อ...)")
         with my_tabs[2]:
-            st.markdown("**หน้าติดตามงาน:** (รอพัฒนาดึงข้อมูลทุกกลุ่มมาแสดงเป็นตาราง...)")
+            st.markdown("**หน้าติดตามงาน:** (พื้นที่เตรียมพัฒนาต่อ...)")
             
     elif st.session_state.role == "SAT":
         with my_tabs[1]:
-            st.markdown("**หน้าประเมินเกณฑ์ระบาด:** (รอพัฒนา Checkbox เงื่อนไขต่างๆ...)")
+            st.markdown("**หน้าประเมินเกณฑ์ระบาด:** (พื้นที่เตรียมพัฒนาต่อ...)")
         with my_tabs[2]:
-            st.markdown("**หน้าอัปเดตงาน SAT:** (รอพัฒนาฟอร์มส่งงาน...)")
-            
-    elif st.session_state.role == "JIT":
-        with my_tabs[1]:
-            st.markdown("**หน้าอัปเดตงาน JIT:** (รอพัฒนาฟอร์มส่งงาน...)")
+            st.markdown("**หน้าอัปเดตงาน SAT:** (พื้นที่เตรียมพัฒนาต่อ...)")
             
     else:
         with my_tabs[1]:
-            st.markdown(f"**หน้าอัปเดตงาน {st.session_state.role}:** (รอพัฒนาฟอร์มส่งงาน...)")
+            st.markdown(f"**หน้าอัปเดตงาน {st.session_state.role}:** (พื้นที่เตรียมพัฒนาต่อ...)")
 
 # ---------------------------------------------------------
-# ตัวควบคุมการสลับหน้า Login / Dashboard
+# ควบคุม Flow หน้าจอ
 # ---------------------------------------------------------
 if not st.session_state.logged_in:
     login_page()
