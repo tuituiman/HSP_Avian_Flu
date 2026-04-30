@@ -32,7 +32,7 @@ def login_page():
     
     try:
         df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=0)
-        df_users.columns = df_users.columns.str.strip() # ป้องกันช่องว่างที่หัวตาราง
+        df_users.columns = df_users.columns.str.strip()
     except Exception as e:
         st.error(f"⚠️ ตรวจพบ Error จากระบบหลังบ้าน: {e}")
         st.stop()
@@ -119,7 +119,7 @@ def main_dashboard():
         st.markdown("**หน้าประกาศทั่วไป:** ใช้แสดงสรุปสถานการณ์ให้ทุกคนรับทราบ")
         
     # =========================================================
-    # ฟีเจอร์หน้า ADMIN (จัดการ User)
+    # ฟีเจอร์หน้า ADMIN (จัดการ User) - อัปเดต UX ใหม่
     # =========================================================
     if st.session_state.role == "Admin":
         with my_tabs[1]:
@@ -130,20 +130,17 @@ def main_dashboard():
                 df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=0)
                 df_roles = conn.read(spreadsheet=SHEET_URL, worksheet="Role_Mapping", ttl=0)
                 
-                # บังคับชื่อหัวคอลัมน์ให้ปลอดภัยจากการเคาะ Spacebar
                 df_users.columns = df_users.columns.str.strip()
-                df_roles.columns = ["Main_Role", "Role"] # บังคับเปลี่ยนชื่อคอลัมน์ให้อ่านง่าย
+                df_roles.columns = ["Main_Role", "Role"] 
                 
                 if df_users.empty:
                     df_users = pd.DataFrame(columns=["Username", "Password", "Main_Role", "Role"])
                 
-                # ลิสต์สำหรับทำ Dropdown
                 main_roles_list = df_roles["Main_Role"].dropna().unique().tolist()
                 all_roles_list = df_roles["Role"].dropna().unique().tolist()
 
-                # --- ส่วนที่ 1: เพิ่มผู้ใช้ใหม่ ---
+                # --- ส่วนที่ 1: เพิ่มผู้ใช้ใหม่ (อัปเดต UX จับคู่ 1:1) ---
                 with st.expander("➕ เพิ่มผู้ใช้งานใหม่ (Add New User)", expanded=True):
-                    st.markdown("ระบบจะดึงกลุ่มภารกิจจากชีต `Role_Mapping` มาให้เลือกโดยอัตโนมัติ")
                     
                     c1, c2 = st.columns(2)
                     with c1:
@@ -151,18 +148,32 @@ def main_dashboard():
                     
                     # กรอง Role ตาม Main_Role
                     filtered_roles = []
+                    selected_role = "-- เลือกกลุ่มภารกิจ --"
+                    
                     if selected_main_role != "-- เลือกสายงาน --":
                         filtered_roles = df_roles[df_roles["Main_Role"] == selected_main_role]["Role"].tolist()
                     
                     with c2:
-                        selected_role = st.selectbox("2. เลือกกลุ่มภารกิจ (Role)", ["-- เลือกกลุ่มภารกิจ --"] + filtered_roles)
+                        if selected_main_role == "-- เลือกสายงาน --":
+                            st.selectbox("2. เลือกกลุ่มภารกิจ (Role)", ["-- กรุณาเลือกสายงานก่อน --"], disabled=True)
+                        elif len(filtered_roles) == 1:
+                            # กรณี Match 1:1 (Admin, IC, Liaison)
+                            selected_role = filtered_roles[0]
+                            st.info(f"📌 กลุ่มภารกิจ (Role): **{selected_role}** (จับคู่อัตโนมัติ)")
+                        else:
+                            # กรณี Match 1:N (Planning, Operation, Support)
+                            selected_role = st.selectbox("2. เลือกกลุ่มภารกิจ (Role)", ["-- เลือกกลุ่มภารกิจ --"] + filtered_roles)
 
-                    new_user = st.text_input("Username (ห้ามซ้ำ)")
-                    new_pwd = st.text_input("Password", type="password")
+                    # บรรทัดรับ Username / Password
+                    col_u, col_p = st.columns(2)
+                    with col_u:
+                        new_user = st.text_input("Username (ห้ามซ้ำ)")
+                    with col_p:
+                        new_pwd = st.text_input("Password", type="password")
                     
                     if st.button("เพิ่มบัญชีผู้ใช้งาน", type="primary"):
-                        if selected_role == "-- เลือกกลุ่มภารกิจ --" or not new_user:
-                            st.warning("⚠️ กรุณากรอก Username และเลือกข้อมูลให้ครบถ้วน")
+                        if selected_main_role == "-- เลือกสายงาน --" or selected_role == "-- เลือกกลุ่มภารกิจ --" or not new_user or not new_pwd:
+                            st.warning("⚠️ กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง")
                         elif new_user in df_users['Username'].values:
                             st.error("❌ Username นี้มีในระบบแล้ว กรุณาใช้ชื่ออื่น")
                         else:
@@ -174,21 +185,21 @@ def main_dashboard():
                             }])
                             updated_df = pd.concat([df_users, new_data], ignore_index=True)
                             conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=updated_df)
-                            st.success(f"✅ บันทึกข้อมูลบัญชี **{new_user}** สำเร็จ!")
+                            st.success(f"✅ บันทึกข้อมูลบัญชี **{new_user}** (Role: {selected_role}) สำเร็จ!")
                             st.rerun()
 
                 st.divider()
 
                 # --- ส่วนที่ 2: ตารางแก้ไข/ลบ ผู้ใช้ปัจจุบัน ---
                 st.subheader("🛠️ จัดการบัญชีปัจจุบัน")
-                st.info("แก้ไขรหัสผ่านและกลุ่มภารกิจได้โดยตรงในตาราง หากต้องการลบบัญชี ให้คลิกเลือกที่หน้าแถวแล้วกดปุ่ม **Delete** หรือ **Backspace** บนคีย์บอร์ด")
+                st.info("แก้ไข Password, Main Role, หรือ Role ได้ในตาราง หากต้องการลบบัญชี ให้คลิกที่หน้าแถวแล้วกดปุ่ม **Delete** บนคีย์บอร์ด")
                 
                 edited_users = st.data_editor(
                     df_users,
                     num_rows="dynamic",
                     use_container_width=True,
                     column_config={
-                        "Username": st.column_config.TextColumn("Username", disabled=True), # ไม่อนุญาตให้แก้ Username ป้องกัน Database พัง
+                        "Username": st.column_config.TextColumn("Username", disabled=True), 
                         "Password": st.column_config.TextColumn("Password"),
                         "Main_Role": st.column_config.SelectboxColumn("สายงานหลัก", options=main_roles_list),
                         "Role": st.column_config.SelectboxColumn("กลุ่มภารกิจย่อย", options=all_roles_list)
@@ -196,7 +207,7 @@ def main_dashboard():
                 )
                 
                 if st.button("💾 บันทึกการเปลี่ยนแปลง (Save Changes)"):
-                    edited_users = edited_users.dropna(subset=['Username']) # ลบแถวว่างทิ้ง
+                    edited_users = edited_users.dropna(subset=['Username'])
                     conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=edited_users)
                     st.success("✅ อัปเดตข้อมูลผู้ใช้งานลง Google Sheets เรียบร้อยแล้ว!")
                     st.rerun()
