@@ -119,52 +119,63 @@ def main_dashboard():
         st.markdown("**หน้าประกาศทั่วไป:** ใช้แสดงสรุปสถานการณ์ให้ทุกคนรับทราบ")
         
     # =========================================================
-    # ฟีเจอร์หน้า ADMIN (จัดการ User) - อัปเดต UX ใหม่
+    # ฟีเจอร์หน้า ADMIN (จัดการ User อัจฉริยะ)
     # =========================================================
     if st.session_state.role == "Admin":
         with my_tabs[1]:
             st.header("⚙️ ระบบจัดการบัญชีผู้ใช้งาน (User Management)")
             
             try:
-                # โหลดข้อมูล
+                # โหลดข้อมูลชีต Users และลบช่องว่างหัวคอลัมน์
                 df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=0)
-                df_roles = conn.read(spreadsheet=SHEET_URL, worksheet="Role_Mapping", ttl=0)
-                
                 df_users.columns = df_users.columns.str.strip()
-                df_roles.columns = ["Main_Role", "Role"] 
+                
+                # โหลดข้อมูลชีต Role_Mapping อย่างปลอดภัย (กันคอลัมน์ขยะแถมมา)
+                df_roles_raw = conn.read(spreadsheet=SHEET_URL, worksheet="Role_Mapping", ttl=0)
+                df_roles_raw.columns = df_roles_raw.columns.str.strip()
+                
+                # ดึงเฉพาะ 2 คอลัมน์ที่เราต้องการจริงๆ มาใช้
+                if 'Main Role' in df_roles_raw.columns and 'Role' in df_roles_raw.columns:
+                    df_roles = df_roles_raw[['Main Role', 'Role']].dropna(how='all')
+                    df_roles.rename(columns={'Main Role': 'Main_Role'}, inplace=True)
+                else:
+                    # ถ้าชื่อคอลัมน์ไม่ตรงเป๊ะ ให้ดึงแค่ 2 คอลัมน์แรกมาบังคับตั้งชื่อใหม่
+                    df_roles = df_roles_raw.iloc[:, :2].dropna(how='all')
+                    df_roles.columns = ['Main_Role', 'Role']
                 
                 if df_users.empty:
                     df_users = pd.DataFrame(columns=["Username", "Password", "Main_Role", "Role"])
                 
+                # ลิสต์สำหรับทำ Dropdown (ตัดค่าว่างทิ้ง)
                 main_roles_list = df_roles["Main_Role"].dropna().unique().tolist()
                 all_roles_list = df_roles["Role"].dropna().unique().tolist()
 
-                # --- ส่วนที่ 1: เพิ่มผู้ใช้ใหม่ (อัปเดต UX จับคู่ 1:1) ---
+                # --- ส่วนที่ 1: เพิ่มผู้ใช้ใหม่ (1:1 Auto-Select & 1:N Dropdown) ---
                 with st.expander("➕ เพิ่มผู้ใช้งานใหม่ (Add New User)", expanded=True):
-                    
                     c1, c2 = st.columns(2)
+                    
                     with c1:
                         selected_main_role = st.selectbox("1. เลือกสายงาน (Main_Role)", ["-- เลือกสายงาน --"] + main_roles_list)
                     
-                    # กรอง Role ตาม Main_Role
+                    # กรอง Role ย่อย
                     filtered_roles = []
                     selected_role = "-- เลือกกลุ่มภารกิจ --"
                     
                     if selected_main_role != "-- เลือกสายงาน --":
-                        filtered_roles = df_roles[df_roles["Main_Role"] == selected_main_role]["Role"].tolist()
+                        filtered_roles = df_roles[df_roles["Main_Role"] == selected_main_role]["Role"].dropna().tolist()
                     
                     with c2:
                         if selected_main_role == "-- เลือกสายงาน --":
                             st.selectbox("2. เลือกกลุ่มภารกิจ (Role)", ["-- กรุณาเลือกสายงานก่อน --"], disabled=True)
                         elif len(filtered_roles) == 1:
-                            # กรณี Match 1:1 (Admin, IC, Liaison)
+                            # จับคู่ 1:1 (Admin, IC, Liaison)
                             selected_role = filtered_roles[0]
-                            st.info(f"📌 กลุ่มภารกิจ (Role): **{selected_role}** (จับคู่อัตโนมัติ)")
+                            st.info(f"📌 กลุ่มภารกิจ (Role): **{selected_role}** (เลือกล็อกอัตโนมัติ)")
                         else:
-                            # กรณี Match 1:N (Planning, Operation, Support)
+                            # 1:N (Planning, Operation, Support) กางตัวเลือกให้
                             selected_role = st.selectbox("2. เลือกกลุ่มภารกิจ (Role)", ["-- เลือกกลุ่มภารกิจ --"] + filtered_roles)
 
-                    # บรรทัดรับ Username / Password
+                    # สร้าง Username / Password
                     col_u, col_p = st.columns(2)
                     with col_u:
                         new_user = st.text_input("Username (ห้ามซ้ำ)")
@@ -173,7 +184,7 @@ def main_dashboard():
                     
                     if st.button("เพิ่มบัญชีผู้ใช้งาน", type="primary"):
                         if selected_main_role == "-- เลือกสายงาน --" or selected_role == "-- เลือกกลุ่มภารกิจ --" or not new_user or not new_pwd:
-                            st.warning("⚠️ กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง")
+                            st.warning("⚠️ กรุณากรอกข้อมูลและเลือกระดับชั้นให้ครบถ้วน")
                         elif new_user in df_users['Username'].values:
                             st.error("❌ Username นี้มีในระบบแล้ว กรุณาใช้ชื่ออื่น")
                         else:
@@ -185,14 +196,14 @@ def main_dashboard():
                             }])
                             updated_df = pd.concat([df_users, new_data], ignore_index=True)
                             conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=updated_df)
-                            st.success(f"✅ บันทึกข้อมูลบัญชี **{new_user}** (Role: {selected_role}) สำเร็จ!")
+                            st.success(f"✅ บันทึกบัญชี **{new_user}** ({selected_role}) ลง Database สำเร็จ!")
                             st.rerun()
 
                 st.divider()
 
-                # --- ส่วนที่ 2: ตารางแก้ไข/ลบ ผู้ใช้ปัจจุบัน ---
+                # --- ส่วนที่ 2: ตารางจัดการผู้ใช้ปัจจุบัน ---
                 st.subheader("🛠️ จัดการบัญชีปัจจุบัน")
-                st.info("แก้ไข Password, Main Role, หรือ Role ได้ในตาราง หากต้องการลบบัญชี ให้คลิกที่หน้าแถวแล้วกดปุ่ม **Delete** บนคีย์บอร์ด")
+                st.info("แก้ไขข้อมูลในตารางได้โดยตรง | ลบบัญชี: กดคลิกที่ช่องหน้าสุดของแถว แล้วกดปุ่ม Delete บนคีย์บอร์ด")
                 
                 edited_users = st.data_editor(
                     df_users,
@@ -206,14 +217,14 @@ def main_dashboard():
                     }
                 )
                 
-                if st.button("💾 บันทึกการเปลี่ยนแปลง (Save Changes)"):
+                if st.button("💾 บันทึกการเปลี่ยนแปลงตาราง (Save Changes)"):
                     edited_users = edited_users.dropna(subset=['Username'])
                     conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=edited_users)
                     st.success("✅ อัปเดตข้อมูลผู้ใช้งานลง Google Sheets เรียบร้อยแล้ว!")
                     st.rerun()
 
             except Exception as e:
-                st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูล: {e}")
+                st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูล Database: {e}")
                 
     # =========================================================
     # เว้นโครงสำหรับ Role อื่นๆ
