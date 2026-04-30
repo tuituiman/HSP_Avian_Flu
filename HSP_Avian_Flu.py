@@ -31,7 +31,8 @@ def login_page():
     st.markdown("สำนักงานป้องกันควบคุมโรคที่ 1 เชียงใหม่ (กรณีโรคไข้หวัดนก)")
     
     try:
-        df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=0)
+        # แก้ไขตรงนี้: เปลี่ยน ttl=0 เป็น ttl=10 (ให้จำข้อมูล 10 วินาที ช่วยลดโควตา)
+        df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=10)
         df_users.columns = df_users.columns.str.strip()
     except Exception as e:
         st.error(f"⚠️ ตรวจพบ Error จากระบบหลังบ้าน: {e}")
@@ -60,16 +61,16 @@ def login_page():
                     st.error("❌ Username หรือ Password ไม่ถูกต้อง!")
 
 # ---------------------------------------------------------
-# 2. หน้า Dashboard หลัก (EOC Action Plan)
+# 2. หน้า Dashboard หลัก
 # ---------------------------------------------------------
 def main_dashboard():
-    # --- Sidebar ---
     st.sidebar.header("👤 ข้อมูลผู้ใช้งาน")
     st.sidebar.write(f"**Username:** {st.session_state.username}")
     st.sidebar.write(f"**สายงาน (Main Role):** {st.session_state.main_role}")
     st.sidebar.write(f"**กลุ่มภารกิจ (Role):** {st.session_state.role}")
     
     if st.sidebar.button("🚪 ออกจากระบบ (Logout)"):
+        st.cache_data.clear() # ล้างความจำก่อนออก
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.role = ""
@@ -78,7 +79,6 @@ def main_dashboard():
 
     st.title("🚨 EOC Action Plan: กรณีไข้หวัดนก (HSP 2568)")
     
-    # --- สถานะ EOC ---
     st.header("📊 สถานะศูนย์ปฏิบัติการตอบโต้ภาวะฉุกเฉิน")
     
     if st.session_state.role in ["IC (ผู้บัญชาการ)", "Admin"]:
@@ -102,7 +102,6 @@ def main_dashboard():
 
     st.divider()
 
-    # --- กระดาน Tab ---
     st.subheader("กระดานปฏิบัติงาน")
     tabs_to_show = ["📍 ภาพรวมและประกาศ"]
     
@@ -119,45 +118,41 @@ def main_dashboard():
         st.markdown("**หน้าประกาศทั่วไป:** ใช้แสดงสรุปสถานการณ์ให้ทุกคนรับทราบ")
         
     # =========================================================
-    # ฟีเจอร์หน้า ADMIN (จัดการ User อัจฉริยะ)
+    # ฟีเจอร์หน้า ADMIN 
     # =========================================================
     if st.session_state.role == "Admin":
         with my_tabs[1]:
             st.header("⚙️ ระบบจัดการบัญชีผู้ใช้งาน (User Management)")
             
             try:
-                # โหลดข้อมูลชีต Users และลบช่องว่างหัวคอลัมน์
-                df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=0)
+                # แก้ไขตรงนี้: เพิ่ม ttl=10 เพื่อลดภาระการดึงข้อมูล
+                df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=10)
                 df_users.columns = df_users.columns.str.strip()
                 
-                # โหลดข้อมูลชีต Role_Mapping อย่างปลอดภัย (กันคอลัมน์ขยะแถมมา)
-                df_roles_raw = conn.read(spreadsheet=SHEET_URL, worksheet="Role_Mapping", ttl=0)
+                # Role_Mapping นานๆ เปลี่ยนที ให้จำไว้ 60 วินาทีเลย
+                df_roles_raw = conn.read(spreadsheet=SHEET_URL, worksheet="Role_Mapping", ttl=60)
                 df_roles_raw.columns = df_roles_raw.columns.str.strip()
                 
-                # ดึงเฉพาะ 2 คอลัมน์ที่เราต้องการจริงๆ มาใช้
                 if 'Main Role' in df_roles_raw.columns and 'Role' in df_roles_raw.columns:
                     df_roles = df_roles_raw[['Main Role', 'Role']].dropna(how='all')
                     df_roles.rename(columns={'Main Role': 'Main_Role'}, inplace=True)
                 else:
-                    # ถ้าชื่อคอลัมน์ไม่ตรงเป๊ะ ให้ดึงแค่ 2 คอลัมน์แรกมาบังคับตั้งชื่อใหม่
                     df_roles = df_roles_raw.iloc[:, :2].dropna(how='all')
                     df_roles.columns = ['Main_Role', 'Role']
                 
                 if df_users.empty:
                     df_users = pd.DataFrame(columns=["Username", "Password", "Main_Role", "Role"])
                 
-                # ลิสต์สำหรับทำ Dropdown (ตัดค่าว่างทิ้ง)
                 main_roles_list = df_roles["Main_Role"].dropna().unique().tolist()
                 all_roles_list = df_roles["Role"].dropna().unique().tolist()
 
-                # --- ส่วนที่ 1: เพิ่มผู้ใช้ใหม่ (1:1 Auto-Select & 1:N Dropdown) ---
+                # --- ส่วนที่ 1: เพิ่มผู้ใช้ใหม่ ---
                 with st.expander("➕ เพิ่มผู้ใช้งานใหม่ (Add New User)", expanded=True):
                     c1, c2 = st.columns(2)
                     
                     with c1:
                         selected_main_role = st.selectbox("1. เลือกสายงาน (Main_Role)", ["-- เลือกสายงาน --"] + main_roles_list)
                     
-                    # กรอง Role ย่อย
                     filtered_roles = []
                     selected_role = "-- เลือกกลุ่มภารกิจ --"
                     
@@ -168,14 +163,11 @@ def main_dashboard():
                         if selected_main_role == "-- เลือกสายงาน --":
                             st.selectbox("2. เลือกกลุ่มภารกิจ (Role)", ["-- กรุณาเลือกสายงานก่อน --"], disabled=True)
                         elif len(filtered_roles) == 1:
-                            # จับคู่ 1:1 (Admin, IC, Liaison)
                             selected_role = filtered_roles[0]
                             st.info(f"📌 กลุ่มภารกิจ (Role): **{selected_role}** (เลือกล็อกอัตโนมัติ)")
                         else:
-                            # 1:N (Planning, Operation, Support) กางตัวเลือกให้
                             selected_role = st.selectbox("2. เลือกกลุ่มภารกิจ (Role)", ["-- เลือกกลุ่มภารกิจ --"] + filtered_roles)
 
-                    # สร้าง Username / Password
                     col_u, col_p = st.columns(2)
                     with col_u:
                         new_user = st.text_input("Username (ห้ามซ้ำ)")
@@ -196,6 +188,7 @@ def main_dashboard():
                             }])
                             updated_df = pd.concat([df_users, new_data], ignore_index=True)
                             conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=updated_df)
+                            st.cache_data.clear() # <- พระเอกของเรา! สั่งล้างความจำทันทีหลังเซฟ เพื่อให้ระบบดึงข้อมูลใหม่
                             st.success(f"✅ บันทึกบัญชี **{new_user}** ({selected_role}) ลง Database สำเร็จ!")
                             st.rerun()
 
@@ -220,6 +213,7 @@ def main_dashboard():
                 if st.button("💾 บันทึกการเปลี่ยนแปลงตาราง (Save Changes)"):
                     edited_users = edited_users.dropna(subset=['Username'])
                     conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=edited_users)
+                    st.cache_data.clear() # <- สั่งล้างความจำหลังแก้ไขตารางเสร็จ
                     st.success("✅ อัปเดตข้อมูลผู้ใช้งานลง Google Sheets เรียบร้อยแล้ว!")
                     st.rerun()
 
@@ -239,9 +233,6 @@ def main_dashboard():
         with my_tabs[1]:
             st.markdown(f"**หน้าอัปเดตงาน {st.session_state.role}:** (พื้นที่เตรียมพัฒนาต่อ...)")
 
-# ---------------------------------------------------------
-# ควบคุม Flow หน้าจอ
-# ---------------------------------------------------------
 if not st.session_state.logged_in:
     login_page()
 else:
