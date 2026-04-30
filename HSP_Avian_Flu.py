@@ -1,150 +1,131 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 
 # ---------------------------------------------------------
-# 1. การตั้งค่าหน้าเพจ
+# 1. ตั้งค่าหน้าเพจ
 # ---------------------------------------------------------
-st.set_page_config(page_title="EOC สคร.1 เชียงใหม่ - ไข้หวัดนก", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="EOC สคร.1 เชียงใหม่ - ไข้หวัดนก", layout="wide")
+st.title("🚨 EOC Command Center: โรคไข้หวัดนก (HSP 2568)")
 
-st.title("🚨 EOC Action Plan: กรณีไข้หวัดนก (HSP 2568)")
-st.markdown("**สำนักงานป้องกันควบคุมโรคที่ 1 เชียงใหม่**")
-
-# ---------------------------------------------------------
-# 2. ฐานข้อมูลภารกิจ (ดึงมาจากตารางแผน HSP สคร.1 เชียงใหม่)
-# ---------------------------------------------------------
-data = [
-    # --- ALERT MODE ---
-    ["SAT", "Alert", "ติดตามสถานการณ์การระบาด ตรวจสอบเหตุการณ์กับส่วนกลาง สัปดาห์ละ 1 ครั้ง"],
-    ["SAT", "Alert", "ประเมินความเสี่ยง Spot Report เพื่อรายงานสถานการณ์ให้ผู้บริหารทราบ"],
-    ["SAT", "Alert", "จัดทำข้อเสนอเพื่อยกระดับศูนย์ EOC และขอสนับสนุนกำลังคน"],
-    ["JIT", "Alert", "จัดเตรียมความพร้อมทีม JIT ทบทวนการสวม-ถอด PPE"],
-    ["JIT", "Alert", "กรณีพบผู้ป่วยสงสัย: ตรวจสอบเหตุการณ์ ส่งแล็บ และลง M-EBS"],
-    ["Lab", "Alert", "เตรียมความพร้อมห้องปฏิบัติการ และข้อมูลแล็บที่รับตรวจเชื้อ"],
-    ["SSR", "Alert", "ทบทวนและเตรียมการแผนเผชิญเหตุ (IAP) และ BCP"],
-    ["HR", "Alert", "ทบทวนอัตรากำลังคน และคุณสมบัติเจ้าหน้าที่สำหรับ EOC"],
-    ["Admin", "Alert", "จัดเตรียมสถานที่และระบบสื่อสารสำหรับเปิดศูนย์ EOC"],
-    ["Finance", "Alert", "เตรียมความพร้อมด้านแผนและการของบประมาณสนับสนุน"],
-    ["Logistics", "Alert", "สำรวจและสำรองวัสดุเวชภัณฑ์ (ยา Oseltamivir, PPE, N95)"],
-    ["MS", "Alert", "เตรียมเวชปฏิบัติการวินิจฉัย และระบบการรักษาใน รพ.สนาม"],
-    ["RC", "Alert", "จัดเตรียมช่องทางการสื่อสารประชาชน และทำเนียบเครือข่ายสื่อมวลชน"],
-    ["Law", "Alert", "ทบทวน พ.ร.บ.โรคติดต่อ และ พ.ร.บ.โรคระบาดสัตว์"],
-    ["PoE", "Alert", "เตรียมการเฝ้าระวังคัดกรองโรคที่ด่าน และเตรียมพื้นที่กักกัน"],
-
-    # --- RESPONSE MODE ---
-    ["IC", "Response", "พิจารณายกระดับ EOC, ประกาศใช้แผน BCP และสั่งการ IAP"],
-    ["Liaison", "Response", "ประสานงานกับกรมปศุสัตว์ กรมอุทยานฯ และ อปท."],
-    ["SAT", "Response", "วิเคราะห์สถานการณ์ และทำ Data Visualization นำเสนอวันละ 1 ครั้ง"],
-    ["SSR", "Response", "ประเมินแผน IAP และปรับกลยุทธ์ให้สอดคล้องกับสถานการณ์"],
-    ["JIT", "Response", "ลงสอบสวนโรค ค้นหาผู้ป่วย/ผู้สัมผัส และควบคุมการระบาดในวงกว้าง"],
-    ["Active Surveillance", "Response", "ลงพื้นที่เฝ้าระวังเชิงรุกในประชากรกลุ่มเสี่ยงและชุมชน"],
-    ["RC", "Response", "แถลงข่าว ผลิตสื่อประชาสัมพันธ์ และเตรียม Script ให้โฆษก"],
-    ["Logistics", "Response", "แจกจ่ายพาหนะ เวชภัณฑ์ และ PPE ให้ทีมลงพื้นที่"],
-    ["MS", "Response", "ประสานการดูแลรักษาผู้ป่วย และดูแลความปลอดภัยของผู้ปฏิบัติงาน"],
-    ["PoE", "Response", "คัดกรองผู้เดินทางด่านพรมแดน แจ้งสถานการณ์ และทำลายเชื้อ"],
-    ["Finance", "Response", "อนุมัติงบฉุกเฉิน และดำเนินการเบิก-จ่าย"],
-    ["Law", "Response", "บังคับใช้กฎหมายกับสถานประกอบการ หรือฟาร์มสัตว์ปีกที่ฝ่าฝืน"],
-    ["Vaccine", "Response", "บริหารจัดการการกระจายและฉีดวัคซีน (กรณีมีวัคซีนเฉพาะ)"],
-
-    # --- หลังเกิดเหตุ (POST-INCIDENT) ---
-    ["SAT", "หลังเกิดเหตุ", "ประเมินความเสี่ยงสถานการณ์ว่ากลับคืนสู่ภาวะปกติแล้วหรือไม่"],
-    ["SSR", "หลังเกิดเหตุ", "สนับสนุนข้อมูลประเมินสถานการณ์เพื่อลดระดับ EOC"],
-    ["IC", "หลังเกิดเหตุ", "ประกาศปิดศูนย์บัญชาการสถานการณ์"],
-    ["Liaison", "หลังเกิดเหตุ", "แจ้งเครือข่ายเรื่องการปิดศูนย์และสรุปสถานการณ์"],
-    ["Logistics", "หลังเกิดเหตุ", "Demobilization เรียกคืนอุปกรณ์ และสำรวจสต็อกคงเหลือ"],
-    ["Admin", "หลังเกิดเหตุ", "รวบรวมเอกสารและสถานที่กลับสู่สภาพเดิม"],
-    ["ทุกกลุ่มภารกิจ", "หลังเกิดเหตุ", "ทำ After Action Review (AAR) เพื่อถอดบทเรียนปรับปรุงแผน"]
-]
-df_tasks = pd.DataFrame(data, columns=["Role", "Mode", "Task"])
+# URL Google Sheet ของคุณ
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1newH4TiteAxJxKnikgI4L8TA1HRfLaXGB6iFFTBvApc/edit?gid=0#gid=0"
 
 # ---------------------------------------------------------
-# 3. ฐานข้อมูลสต็อกและเบอร์ติดต่อ
+# 2. จำลอง Database ด้วย Session State (เพื่อให้เว็บทำงานได้ทันที)
 # ---------------------------------------------------------
-df_stock = pd.DataFrame({
-    "รายการเวชภัณฑ์": ["Oseltamivir 75 mg", "Alcohol gel 400 ml", "Cover all", "Face shield", "Surgical Mask", "Mask N95"],
-    "Alert": ["1,000 เม็ด", "200 ขวด", "100 ชุด", "200 ชิ้น", "40,000 ชิ้น", "1,000 ชิ้น"],
-    "Response 1": ["2,000 เม็ด", "500 ขวด", "200 ชุด", "400 ชิ้น", "50,000 ชิ้น", "2,000 ชิ้น"],
-    "Response 2": ["5,000 เม็ด", "1,000 ขวด", "400 ชุด", "600 ชิ้น", "100,000 ชิ้น", "5,000 ชิ้น"],
-    "Response 3": ["10,000 เม็ด", "2,000 ขวด", "1,000 ชุด", "1,200 ชิ้น", "150,000 ชิ้น", "10,000 ชิ้น"]
-})
-
-df_contacts = pd.DataFrame({
-    "หน่วยงาน": ["กลุ่มระบาดวิทยาฯ (SAT)", "กลุ่มห้องปฏิบัติการฯ", "ด่านควบคุมโรค ทอท.เชียงใหม่", "กองระบาดวิทยา (ส่วนกลาง)"],
-    "เบอร์โทร": ["053-140-774 ต่อ 220", "053-276-364 ต่อ 108", "053-200-647", "02-590-3801"],
-    "มือถือฉุกเฉิน": ["086-1950935", "081-0280005", "083-0772526", "-"]
-})
+if 'commands' not in st.session_state:
+    st.session_state.commands = []
+if 'tasks' not in st.session_state:
+    st.session_state.tasks = {
+        "SAT_1": "รอรับคำสั่ง", "JIT_1": "รอรับคำสั่ง", "Log_1": "รอรับคำสั่ง"
+    }
+if 'current_mode' not in st.session_state:
+    st.session_state.current_mode = "Watch Mode (ปกติ)"
 
 # ---------------------------------------------------------
-# 4. ส่วนแสดงผล Sidebar
+# 3. Sidebar - ระบุตัวตน
 # ---------------------------------------------------------
-st.sidebar.header("🎛️ Control Panel")
-selected_mode = st.sidebar.select_slider(
-    "📌 1. เลือกระยะสถานการณ์ (Phase):", 
-    options=["Alert", "Response", "หลังเกิดเหตุ"]
+st.sidebar.header("👤 เข้าสู่ระบบ")
+user_role = st.sidebar.selectbox("กลุ่มภารกิจของคุณ:", 
+    ["IC (ผู้บัญชาการ)", "SAT", "JIT", "Logistics", "RC", "อื่นๆ"]
 )
 
-roles_list = ["ทุกกลุ่มภารกิจ", "IC", "Liaison", "SAT", "SSR", "JIT", "Active Surveillance", "Lab", "MS", "Logistics", "RC", "PoE", "Finance", "Admin", "HR", "Law", "Vaccine"]
-selected_role = st.sidebar.selectbox("👥 2. เลือกกลุ่มภารกิจของคุณ:", roles_list)
+# แถบแจ้งเตือนระดับสถานการณ์ปัจจุบัน
+st.info(f"สถานการณ์ปัจจุบัน: **{st.session_state.current_mode}**")
 
-st.sidebar.markdown("---")
-st.sidebar.info("**Trigger Point เบื้องต้น:**\n- พบสัตว์ปีกตายผิดปกติ = **Alert**\n- พบผู้ป่วยยืนยันใน ปท. = **Response**")
-
-# ---------------------------------------------------------
-# 5. ส่วนแสดงผลหลัก (Main Content)
-# ---------------------------------------------------------
-st.header(f"📋 ภารกิจ: {selected_role}")
-
-# กำหนดสีแจ้งเตือนตาม Mode
-if selected_mode == "Alert":
-    st.warning("🟡 สถานะปัจจุบัน: ALERT MODE (เฝ้าระวังและเตรียมความพร้อม)")
-elif selected_mode == "Response":
-    st.error("🔴 สถานะปัจจุบัน: RESPONSE MODE (ตอบโต้ภาวะฉุกเฉินระดับสูง)")
-else:
-    st.success("🟢 สถานะปัจจุบัน: โหมดฟื้นฟู (หลังเกิดเหตุ / ยุติสถานการณ์)")
-
-st.divider()
-
-# กรองข้อมูล
-if selected_role == "ทุกกลุ่มภารกิจ":
-    filtered_df = df_tasks[(df_tasks['Mode'] == selected_mode) | (df_tasks['Role'] == 'ทุกกลุ่มภารกิจ')]
-else:
-    filtered_df = df_tasks[(df_tasks['Mode'] == selected_mode) & ((df_tasks['Role'] == selected_role) | (df_tasks['Role'] == 'ทุกกลุ่มภารกิจ'))]
-
-# แสดง Checklist
-st.subheader("✅ สิ่งที่ต้องดำเนินการ (Action Checklist)")
-if filtered_df.empty:
-    st.write("✨ ไม่มีภารกิจเฉพาะเจาะจงในระยะนี้ โปรดสแตนด์บายและรอรับข้อสั่งการจาก IC")
-else:
-    for index, row in filtered_df.iterrows():
-        st.checkbox(f"**[{row['Role']}]** {row['Task']}", key=f"task_{index}")
-
-st.divider()
+# ถ้ามีข้อสั่งการล่าสุด ให้แสดงแถบแจ้งเตือน
+if len(st.session_state.commands) > 0:
+    st.warning(f"📢 **ข้อสั่งการล่าสุด (จาก IC):** {st.session_state.commands[-1]['msg']} ({st.session_state.commands[-1]['time']})")
 
 # ---------------------------------------------------------
-# 6. ส่วนฟีเจอร์พิเศษตามกลุ่ม (Special Dashboards)
+# 4. สร้างโครงสร้าง Tab (แยกหน้าการทำงาน)
 # ---------------------------------------------------------
-col1, col2 = st.columns(2)
+tab1, tab2, tab3 = st.tabs(["📝 ประเมินสถานการณ์ (Trigger Points)", "📋 กระดานติดตามงาน (Task Board)", "🗣️ ระบบข้อสั่งการ (IC Command)"])
 
-# ฟีเจอร์ของ Logistics
-if selected_role in ["Logistics", "ทุกกลุ่มภารกิจ"]:
+# ==========================================
+# TAB 1: ประเมินเกณฑ์การยกระดับ (Trigger Points)
+# ==========================================
+with tab1:
+    st.header("เกณฑ์การเปิดใช้แผนและยกระดับ EOC")
+    st.markdown("อ้างอิงจากแผนปฏิบัติการเฉพาะโรค ไข้หวัดนก (HSP)")
+    
+    col1, col2 = st.columns(2)
+    
     with col1:
-        st.subheader("📦 เวชภัณฑ์ขั้นต่ำ (Minimum Stock)")
-        st.dataframe(df_stock, hide_index=True)
-
-# ฟีเจอร์ของ Liaison / รวมเบอร์โทร
-if selected_role in ["Liaison", "ทุกกลุ่มภารกิจ"]:
+        st.subheader("🟡 เกณฑ์เข้าสู่ Alert Mode")
+        a1 = st.checkbox("พบผู้ป่วยโรคไข้หวัดนกในพื้นที่ติดกับเขตสุขภาพที่ 1 หรือ ปท.ที่มีบินตรง")
+        a2 = st.checkbox("พบการติดเชื้อยืนยันในปศุสัตว์ในพื้นที่เขต 1 หรือจังหวัดชายแดนติดต่อ")
+        a3 = st.checkbox("พบสัตว์ปีกป่วยตายผิดปกติ + มีผู้ป่วยสงสัยในเขต 1")
+        
     with col2:
-        st.subheader("📞 ทำเนียบการสื่อสาร (Contact List)")
-        st.dataframe(df_contacts, hide_index=True)
+        st.subheader("🔴 เกณฑ์ยกระดับ Response Mode 1-3")
+        r1 = st.checkbox("พบผู้ป่วยยืนยันติดเชื้อในประเทศ + แพร่จากสัตว์สู่คน ในเขต 1 (Response 1)")
+        r2 = st.checkbox("พบผู้ป่วยกลุ่มก้อน >=2 cluster + แพร่ 4 จังหวัดขึ้นไป (Response 2)")
+        r3 = st.checkbox("ระบาดคนสู่คนวงกว้าง + อัตราป่วยตาย > 50% (Response 3)")
 
-# ฟีเจอร์ของ Risk Communication (RC)
-if selected_role in ["RC", "ทุกกลุ่มภารกิจ"]:
-    st.subheader("📢 Key Message สำหรับประชาชน")
-    st.info("""
-    **ประเด็นสื่อสารความเสี่ยงหลัก:**
-    1. หลีกเลี่ยงการสัมผัสสัตว์ปีกที่ป่วยหรือตายผิดปกติ
-    2. กินอาหารที่ปรุงสุกเท่านั้น
-    3. ล้างมือบ่อยๆ ด้วยสบู่
-    4. หากมีอาการไข้ ไอ หอบเหนื่อย หลังสัมผัสสัตว์ปีก 7 วัน ให้รีบพบแพทย์
-    """)
+    if st.button("ประเมินสถานการณ์ (Update Mode)"):
+        if r3:
+            st.session_state.current_mode = "Response Mode 3 (วิกฤต)"
+        elif r2:
+            st.session_state.current_mode = "Response Mode 2"
+        elif r1:
+            st.session_state.current_mode = "Response Mode 1"
+        elif a1 or a2 or a3:
+            st.session_state.current_mode = "Alert Mode"
+        else:
+            st.session_state.current_mode = "Watch Mode (ปกติ)"
+        st.rerun()
 
-st.caption("พัฒนาตามแผนปฏิบัติการเฉพาะโรค (Hazard Specific Plan: HSP) กรณี โรคไข้หวัดนก อัปเดตล่าสุด 2568")
+# ==========================================
+# TAB 2: กระดานส่งงาน (Task Board)
+# ==========================================
+with tab2:
+    st.header(f"หน้าต่างส่งงาน: กลุ่ม {user_role}")
+    
+    if user_role == "SAT":
+        st.markdown("**ภารกิจ: วิเคราะห์สถานการณ์และจัดทำ Spot Report**")
+        sat_status = st.selectbox("สถานะงาน:", ["รอรับคำสั่ง", "กำลังดำเนินการ ⏳", "เสร็จสิ้น ✅"], index=["รอรับคำสั่ง", "กำลังดำเนินการ ⏳", "เสร็จสิ้น ✅"].index(st.session_state.tasks["SAT_1"]))
+        sat_link = st.text_input("แนบลิงก์ผลงาน (เช่น Google Drive / PDF):")
+        if st.button("อัปเดตงาน (SAT)"):
+            st.session_state.tasks["SAT_1"] = sat_status
+            st.success("บันทึกข้อมูลลงฐานข้อมูลเรียบร้อย!")
+
+    elif user_role == "JIT":
+        st.markdown("**ภารกิจ: ลงสอบสวนโรคและลงข้อมูล M-EBS**")
+        jit_status = st.selectbox("สถานะงาน:", ["รอรับคำสั่ง", "กำลังดำเนินการ ⏳", "เสร็จสิ้น ✅"], index=["รอรับคำสั่ง", "กำลังดำเนินการ ⏳", "เสร็จสิ้น ✅"].index(st.session_state.tasks["JIT_1"]))
+        if st.button("อัปเดตงาน (JIT)"):
+            st.session_state.tasks["JIT_1"] = jit_status
+            st.success("บันทึกข้อมูลลงฐานข้อมูลเรียบร้อย!")
+            
+    elif user_role == "IC (ผู้บัญชาการ)":
+        st.markdown("### ภาพรวมสถานะภารกิจทั้งหมด (Dashboard)")
+        st.write(f"- **กลุ่ม SAT:** {st.session_state.tasks['SAT_1']}")
+        st.write(f"- **กลุ่ม JIT:** {st.session_state.tasks['JIT_1']}")
+        st.write(f"- **กลุ่ม Logistics:** {st.session_state.tasks['Log_1']}")
+    else:
+        st.info("กรุณาเลือกกลุ่มภารกิจที่เมนูด้านซ้ายเพื่ออัปเดตงาน")
+
+# ==========================================
+# TAB 3: ระบบข้อสั่งการ (IC Command)
+# ==========================================
+with tab3:
+    st.header("ประกาศข้อสั่งการ (เฉพาะ IC / Liaison)")
+    
+    if user_role in ["IC (ผู้บัญชาการ)", "อื่นๆ"]:
+        new_cmd = st.text_area("พิมพ์ข้อสั่งการใหม่ที่นี่:")
+        if st.button("ส่งข้อสั่งการ"):
+            if new_cmd:
+                now = datetime.now().strftime("%d/%m/%Y %H:%M")
+                st.session_state.commands.append({"msg": new_cmd, "time": now})
+                st.success("ประกาศข้อสั่งการเรียบร้อย ทุกกลุ่มจะเห็นข้อความนี้ทันที")
+                st.rerun()
+    else:
+        st.warning("หน้านี้สงวนสิทธิ์การแก้ไขสำหรับผู้บัญชาการเหตุการณ์ (IC) และกลุ่ม Liaison")
+    
+    st.divider()
+    st.subheader("ประวัติข้อสั่งการย้อนหลัง")
+    for c in reversed(st.session_state.commands):
+        st.write(f"▪️ **[{c['time']}]** {c['msg']}")
+
+st.caption("กำลังเชื่อมต่อฐานข้อมูล: " + SHEET_URL)
