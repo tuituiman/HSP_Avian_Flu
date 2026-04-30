@@ -1,131 +1,163 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from streamlit_gsheets import GSheetsConnection
 
 # ---------------------------------------------------------
-# 1. ตั้งค่าหน้าเพจ
+# ตั้งค่าหน้าเพจ
 # ---------------------------------------------------------
 st.set_page_config(page_title="EOC สคร.1 เชียงใหม่ - ไข้หวัดนก", layout="wide")
-st.title("🚨 EOC Command Center: โรคไข้หวัดนก (HSP 2568)")
 
-# URL Google Sheet ของคุณ
+# ลิงก์ Google Sheet
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1newH4TiteAxJxKnikgI4L8TA1HRfLaXGB6iFFTBvApc/edit?gid=0#gid=0"
 
-# ---------------------------------------------------------
-# 2. จำลอง Database ด้วย Session State (เพื่อให้เว็บทำงานได้ทันที)
-# ---------------------------------------------------------
-if 'commands' not in st.session_state:
-    st.session_state.commands = []
-if 'tasks' not in st.session_state:
-    st.session_state.tasks = {
-        "SAT_1": "รอรับคำสั่ง", "JIT_1": "รอรับคำสั่ง", "Log_1": "รอรับคำสั่ง"
-    }
-if 'current_mode' not in st.session_state:
-    st.session_state.current_mode = "Watch Mode (ปกติ)"
+# สร้าง Session State สำหรับเก็บข้อมูลการล็อกอินและสถานะ EOC
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+if 'username' not in st.session_state:
+    st.session_state.username = ""
+if 'role' not in st.session_state:
+    st.session_state.role = ""
+if 'eoc_status' not in st.session_state:
+    st.session_state.eoc_status = "Watch Mode (เฝ้าระวังปกติ)"
 
 # ---------------------------------------------------------
-# 3. Sidebar - ระบุตัวตน
+# 1. หน้า Login (อ่านจากชีต Users)
 # ---------------------------------------------------------
-st.sidebar.header("👤 เข้าสู่ระบบ")
-user_role = st.sidebar.selectbox("กลุ่มภารกิจของคุณ:", 
-    ["IC (ผู้บัญชาการ)", "SAT", "JIT", "Logistics", "RC", "อื่นๆ"]
-)
-
-# แถบแจ้งเตือนระดับสถานการณ์ปัจจุบัน
-st.info(f"สถานการณ์ปัจจุบัน: **{st.session_state.current_mode}**")
-
-# ถ้ามีข้อสั่งการล่าสุด ให้แสดงแถบแจ้งเตือน
-if len(st.session_state.commands) > 0:
-    st.warning(f"📢 **ข้อสั่งการล่าสุด (จาก IC):** {st.session_state.commands[-1]['msg']} ({st.session_state.commands[-1]['time']})")
-
-# ---------------------------------------------------------
-# 4. สร้างโครงสร้าง Tab (แยกหน้าการทำงาน)
-# ---------------------------------------------------------
-tab1, tab2, tab3 = st.tabs(["📝 ประเมินสถานการณ์ (Trigger Points)", "📋 กระดานติดตามงาน (Task Board)", "🗣️ ระบบข้อสั่งการ (IC Command)"])
-
-# ==========================================
-# TAB 1: ประเมินเกณฑ์การยกระดับ (Trigger Points)
-# ==========================================
-with tab1:
-    st.header("เกณฑ์การเปิดใช้แผนและยกระดับ EOC")
-    st.markdown("อ้างอิงจากแผนปฏิบัติการเฉพาะโรค ไข้หวัดนก (HSP)")
+def login_page():
+    st.title("🔐 เข้าสู่ระบบ EOC Command Center")
+    st.markdown("สำนักงานป้องกันควบคุมโรคที่ 1 เชียงใหม่ (กรณีโรคไข้หวัดนก)")
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("🟡 เกณฑ์เข้าสู่ Alert Mode")
-        a1 = st.checkbox("พบผู้ป่วยโรคไข้หวัดนกในพื้นที่ติดกับเขตสุขภาพที่ 1 หรือ ปท.ที่มีบินตรง")
-        a2 = st.checkbox("พบการติดเชื้อยืนยันในปศุสัตว์ในพื้นที่เขต 1 หรือจังหวัดชายแดนติดต่อ")
-        a3 = st.checkbox("พบสัตว์ปีกป่วยตายผิดปกติ + มีผู้ป่วยสงสัยในเขต 1")
-        
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    try:
+        # อ่านข้อมูลจากชีต Users
+        df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=0)
+    except Exception as e:
+        st.error("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ โปรดตรวจสอบการตั้งค่า secrets.toml และสิทธิ์การแชร์ Sheet")
+        st.stop()
+
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.subheader("🔴 เกณฑ์ยกระดับ Response Mode 1-3")
-        r1 = st.checkbox("พบผู้ป่วยยืนยันติดเชื้อในประเทศ + แพร่จากสัตว์สู่คน ในเขต 1 (Response 1)")
-        r2 = st.checkbox("พบผู้ป่วยกลุ่มก้อน >=2 cluster + แพร่ 4 จังหวัดขึ้นไป (Response 2)")
-        r3 = st.checkbox("ระบาดคนสู่คนวงกว้าง + อัตราป่วยตาย > 50% (Response 3)")
+        with st.form("login_form"):
+            st.subheader("Sign In")
+            input_user = st.text_input("Username")
+            input_pwd = st.text_input("Password", type="password")
+            submit_btn = st.form_submit_button("เข้าสู่ระบบ")
 
-    if st.button("ประเมินสถานการณ์ (Update Mode)"):
-        if r3:
-            st.session_state.current_mode = "Response Mode 3 (วิกฤต)"
-        elif r2:
-            st.session_state.current_mode = "Response Mode 2"
-        elif r1:
-            st.session_state.current_mode = "Response Mode 1"
-        elif a1 or a2 or a3:
-            st.session_state.current_mode = "Alert Mode"
-        else:
-            st.session_state.current_mode = "Watch Mode (ปกติ)"
+            if submit_btn:
+                # ป้องกัน Error กรณีรหัสผ่านใน Sheet เป็นตัวเลข
+                df_users['password'] = df_users['password'].astype(str)
+                # กรองหา User/Password ที่ตรงกัน
+                match = df_users[(df_users['username'] == input_user) & (df_users['password'] == str(input_pwd))]
+                
+                if not match.empty:
+                    st.success("เข้าสู่ระบบสำเร็จ!")
+                    st.session_state.logged_in = True
+                    st.session_state.username = input_user
+                    # เก็บ Role เพื่อนำไปใช้โชว์/ซ่อน Tab
+                    st.session_state.role = match.iloc[0]['role'] 
+                    st.rerun()
+                else:
+                    st.error("❌ Username หรือ Password ไม่ถูกต้อง!")
+
+# ---------------------------------------------------------
+# หน้า Dashboard หลัก (หลัง Login ผ่าน)
+# ---------------------------------------------------------
+def main_dashboard():
+    # --- แถบ Sidebar แสดงข้อมูลตัวเอง ---
+    st.sidebar.header("👤 ข้อมูลผู้ใช้งาน")
+    st.sidebar.write(f"**Username:** {st.session_state.username}")
+    st.sidebar.write(f"**กลุ่มภารกิจ (Role):** {st.session_state.role}")
+    
+    if st.sidebar.button("🚪 ออกจากระบบ (Logout)"):
+        st.session_state.logged_in = False
+        st.session_state.username = ""
+        st.session_state.role = ""
         st.rerun()
 
-# ==========================================
-# TAB 2: กระดานส่งงาน (Task Board)
-# ==========================================
-with tab2:
-    st.header(f"หน้าต่างส่งงาน: กลุ่ม {user_role}")
+    st.title("🚨 EOC Action Plan: กรณีไข้หวัดนก (HSP 2568)")
     
-    if user_role == "SAT":
-        st.markdown("**ภารกิจ: วิเคราะห์สถานการณ์และจัดทำ Spot Report**")
-        sat_status = st.selectbox("สถานะงาน:", ["รอรับคำสั่ง", "กำลังดำเนินการ ⏳", "เสร็จสิ้น ✅"], index=["รอรับคำสั่ง", "กำลังดำเนินการ ⏳", "เสร็จสิ้น ✅"].index(st.session_state.tasks["SAT_1"]))
-        sat_link = st.text_input("แนบลิงก์ผลงาน (เช่น Google Drive / PDF):")
-        if st.button("อัปเดตงาน (SAT)"):
-            st.session_state.tasks["SAT_1"] = sat_status
-            st.success("บันทึกข้อมูลลงฐานข้อมูลเรียบร้อย!")
-
-    elif user_role == "JIT":
-        st.markdown("**ภารกิจ: ลงสอบสวนโรคและลงข้อมูล M-EBS**")
-        jit_status = st.selectbox("สถานะงาน:", ["รอรับคำสั่ง", "กำลังดำเนินการ ⏳", "เสร็จสิ้น ✅"], index=["รอรับคำสั่ง", "กำลังดำเนินการ ⏳", "เสร็จสิ้น ✅"].index(st.session_state.tasks["JIT_1"]))
-        if st.button("อัปเดตงาน (JIT)"):
-            st.session_state.tasks["JIT_1"] = jit_status
-            st.success("บันทึกข้อมูลลงฐานข้อมูลเรียบร้อย!")
+    # ---------------------------------------------------------
+    # 2. หน้าหลัก: แสดง Status ของ EOC
+    # ---------------------------------------------------------
+    st.header("📊 สถานะศูนย์ปฏิบัติการตอบโต้ภาวะฉุกเฉิน")
+    
+    # ระบบให้ IC เป็นคนเปลี่ยนสถานะได้ (ถ้า Role อื่นจะเห็นแค่สถานะอย่างเดียว เปลี่ยนไม่ได้)
+    if st.session_state.role == "IC (ผู้บัญชาการ)":
+        new_status = st.selectbox(
+            "ปรับระดับสถานการณ์ EOC:", 
+            ["Watch Mode (เฝ้าระวังปกติ)", "Alert Mode (เตรียมความพร้อม)", "Response Mode (ตอบโต้ฉุกเฉิน)", "Recovery Mode (ฟื้นฟู/หลังเกิดเหตุ)"],
+            index=["Watch Mode (เฝ้าระวังปกติ)", "Alert Mode (เตรียมความพร้อม)", "Response Mode (ตอบโต้ฉุกเฉิน)", "Recovery Mode (ฟื้นฟู/หลังเกิดเหตุ)"].index(st.session_state.eoc_status)
+        )
+        if new_status != st.session_state.eoc_status:
+            st.session_state.eoc_status = new_status
+            st.rerun()
             
-    elif user_role == "IC (ผู้บัญชาการ)":
-        st.markdown("### ภาพรวมสถานะภารกิจทั้งหมด (Dashboard)")
-        st.write(f"- **กลุ่ม SAT:** {st.session_state.tasks['SAT_1']}")
-        st.write(f"- **กลุ่ม JIT:** {st.session_state.tasks['JIT_1']}")
-        st.write(f"- **กลุ่ม Logistics:** {st.session_state.tasks['Log_1']}")
-    else:
-        st.info("กรุณาเลือกกลุ่มภารกิจที่เมนูด้านซ้ายเพื่ออัปเดตงาน")
+    # แสดงแถบสีตามสถานะ EOC
+    if "Watch" in st.session_state.eoc_status:
+        st.info(f"🟢 สถานะปัจจุบัน: **{st.session_state.eoc_status}**")
+    elif "Alert" in st.session_state.eoc_status:
+        st.warning(f"🟡 สถานะปัจจุบัน: **{st.session_state.eoc_status}**")
+    elif "Response" in st.session_state.eoc_status:
+        st.error(f"🔴 สถานะปัจจุบัน: **{st.session_state.eoc_status}**")
+    elif "Recovery" in st.session_state.eoc_status:
+        st.success(f"🔵 สถานะปัจจุบัน: **{st.session_state.eoc_status}**")
 
-# ==========================================
-# TAB 3: ระบบข้อสั่งการ (IC Command)
-# ==========================================
-with tab3:
-    st.header("ประกาศข้อสั่งการ (เฉพาะ IC / Liaison)")
-    
-    if user_role in ["IC (ผู้บัญชาการ)", "อื่นๆ"]:
-        new_cmd = st.text_area("พิมพ์ข้อสั่งการใหม่ที่นี่:")
-        if st.button("ส่งข้อสั่งการ"):
-            if new_cmd:
-                now = datetime.now().strftime("%d/%m/%Y %H:%M")
-                st.session_state.commands.append({"msg": new_cmd, "time": now})
-                st.success("ประกาศข้อสั่งการเรียบร้อย ทุกกลุ่มจะเห็นข้อความนี้ทันที")
-                st.rerun()
-    else:
-        st.warning("หน้านี้สงวนสิทธิ์การแก้ไขสำหรับผู้บัญชาการเหตุการณ์ (IC) และกลุ่ม Liaison")
-    
     st.divider()
-    st.subheader("ประวัติข้อสั่งการย้อนหลัง")
-    for c in reversed(st.session_state.commands):
-        st.write(f"▪️ **[{c['time']}]** {c['msg']}")
 
-st.caption("กำลังเชื่อมต่อฐานข้อมูล: " + SHEET_URL)
+    # ---------------------------------------------------------
+    # 3. จัดการ Tab แบบ Dynamic (แสดงเฉพาะ Role ที่เกี่ยวข้อง)
+    # ---------------------------------------------------------
+    st.subheader("กระดานปฏิบัติงาน")
+    
+    # สร้าง List ของ Tab ที่ต้องการให้แสดง โดยเริ่มจาก Tab กลางที่ทุกคนต้องเห็น
+    tabs_to_show = ["📍 ภาพรวมและประกาศ"]
+    
+    # เพิ่ม Tab ตาม Role ที่ล็อกอินเข้ามา
+    if st.session_state.role == "IC (ผู้บัญชาการ)":
+        tabs_to_show.extend(["🗣️ ข้อสั่งการ (IC เท่านั้น)", "📈 ติดตามงานทุกกลุ่ม"])
+        
+    elif st.session_state.role == "SAT":
+        tabs_to_show.extend(["📝 ประเมิน Trigger Point", "📥 ส่งงาน SAT"])
+        
+    elif st.session_state.role == "JIT":
+        tabs_to_show.extend(["📥 ส่งงาน JIT"])
+        
+    else:
+        # กลุ่มอื่นๆ ที่ยังไม่ได้กำหนดเงื่อนไข ให้เห็นแค่ส่งงานของตัวเอง
+        tabs_to_show.extend([f"📥 ส่งงาน {st.session_state.role}"])
+
+    # สร้างชุดของ Tabs ขึ้นมาจริงๆ ตามเงื่อนไขด้านบน
+    my_tabs = st.tabs(tabs_to_show)
+    
+    # --- ใส่เนื้อหาในแต่ละ Tab (เว้นโครงไว้ก่อน) ---
+    with my_tabs[0]:
+        st.markdown("**หน้าประกาศทั่วไป:** ใช้แสดงข้อสั่งการหรือสรุปสถานการณ์ให้ทุกคนรับทราบ (รอพัฒนาต่อ...)")
+        
+    # เช็คว่าล็อกอินเป็นอะไร แล้วค่อยดึง Index ของ Tab มาใช้
+    if st.session_state.role == "IC (ผู้บัญชาการ)":
+        with my_tabs[1]:
+            st.markdown("**หน้าออกข้อสั่งการ:** (รอพัฒนาฟอร์มเขียนข้อความลง Database...)")
+        with my_tabs[2]:
+            st.markdown("**หน้าติดตามงาน:** (รอพัฒนาดึงข้อมูลทุกกลุ่มมาแสดงเป็นตาราง...)")
+            
+    elif st.session_state.role == "SAT":
+        with my_tabs[1]:
+            st.markdown("**หน้าประเมินเกณฑ์ระบาด:** (รอพัฒนา Checkbox เงื่อนไขต่างๆ...)")
+        with my_tabs[2]:
+            st.markdown("**หน้าอัปเดตงาน SAT:** (รอพัฒนาฟอร์มส่งงาน...)")
+            
+    elif st.session_state.role == "JIT":
+        with my_tabs[1]:
+            st.markdown("**หน้าอัปเดตงาน JIT:** (รอพัฒนาฟอร์มส่งงาน...)")
+            
+    else:
+        with my_tabs[1]:
+            st.markdown(f"**หน้าอัปเดตงาน {st.session_state.role}:** (รอพัฒนาฟอร์มส่งงาน...)")
+
+# ---------------------------------------------------------
+# ตัวควบคุมการสลับหน้า Login / Dashboard
+# ---------------------------------------------------------
+if not st.session_state.logged_in:
+    login_page()
+else:
+    main_dashboard()
