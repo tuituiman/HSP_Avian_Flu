@@ -31,7 +31,6 @@ def login_page():
     st.markdown("สำนักงานป้องกันควบคุมโรคที่ 1 เชียงใหม่ (กรณีโรคไข้หวัดนก)")
     
     try:
-        # ✅ แก้เป็น ttl=600 (จำข้อมูล 10 นาที) เพื่อกันโควตาเต็ม
         df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=600)
         df_users.columns = df_users.columns.str.strip()
     except Exception as e:
@@ -64,11 +63,47 @@ def login_page():
 # 2. หน้า Dashboard หลัก
 # ---------------------------------------------------------
 def main_dashboard():
+    # โหลดข้อมูล Users ไว้ล่วงหน้า สำหรับใช้ทั้ง Sidebar และ หน้า Admin
+    try:
+        df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=600)
+        df_users.columns = df_users.columns.str.strip()
+        df_users['Password'] = df_users['Password'].astype(str) # กันเหนียวเรื่องรหัสผ่านเป็นตัวเลข
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูล Database: {e}")
+        st.stop()
+
+    # =========================================================
+    # แถบ Sidebar ด้านซ้าย
+    # =========================================================
     st.sidebar.header("👤 ข้อมูลผู้ใช้งาน")
     st.sidebar.write(f"**Username:** {st.session_state.username}")
     st.sidebar.write(f"**สายงาน (Main Role):** {st.session_state.main_role}")
     st.sidebar.write(f"**กลุ่มภารกิจ (Role):** {st.session_state.role}")
     
+    st.sidebar.divider()
+    
+    # --- ฟีเจอร์เปลี่ยนรหัสผ่านส่วนตัว (ทำได้ทุกคน) ---
+    with st.sidebar.expander("🔑 เปลี่ยนรหัสผ่านส่วนตัว"):
+        with st.form("change_pwd_form", clear_on_submit=True):
+            old_pwd = st.text_input("รหัสผ่านเดิม", type="password")
+            new_pwd = st.text_input("รหัสผ่านใหม่", type="password")
+            submit_pwd = st.form_submit_button("บันทึกรหัสผ่านใหม่")
+            
+            if submit_pwd:
+                if not old_pwd or not new_pwd:
+                    st.warning("กรุณากรอกรหัสผ่านให้ครบถ้วน")
+                else:
+                    # เช็ครหัสผ่านเดิม
+                    current_user_data = df_users[df_users['Username'] == st.session_state.username]
+                    if current_user_data.iloc[0]['Password'] == str(old_pwd):
+                        # อัปเดตข้อมูล
+                        df_users.loc[df_users['Username'] == st.session_state.username, 'Password'] = str(new_pwd)
+                        conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=df_users)
+                        st.cache_data.clear() # ล้างความจำเพื่อให้ครั้งหน้าล็อกอินด้วยรหัสใหม่ได้
+                        st.success("✅ เปลี่ยนรหัสผ่านสำเร็จ!")
+                    else:
+                        st.error("❌ รหัสผ่านเดิมไม่ถูกต้อง")
+
     if st.sidebar.button("🚪 ออกจากระบบ (Logout)"):
         st.cache_data.clear() 
         st.session_state.logged_in = False
@@ -77,8 +112,12 @@ def main_dashboard():
         st.session_state.main_role = ""
         st.rerun()
 
+    # =========================================================
+    # พื้นที่กระดานหลักตรงกลาง
+    # =========================================================
     st.title("🚨 EOC Action Plan: กรณีไข้หวัดนก (HSP 2568)")
     
+    # --- สถานะ EOC ---
     st.header("📊 สถานะศูนย์ปฏิบัติการตอบโต้ภาวะฉุกเฉิน")
     
     if st.session_state.role in ["IC (ผู้บัญชาการ)", "Admin"]:
@@ -102,6 +141,7 @@ def main_dashboard():
 
     st.divider()
 
+    # --- กระดาน Tab หลัก ---
     st.subheader("กระดานปฏิบัติงาน")
     tabs_to_show = ["📍 ภาพรวมและประกาศ"]
     
@@ -117,19 +157,13 @@ def main_dashboard():
     with my_tabs[0]:
         st.markdown("**หน้าประกาศทั่วไป:** ใช้แสดงสรุปสถานการณ์ให้ทุกคนรับทราบ")
         
-    # =========================================================
-    # ฟีเจอร์หน้า ADMIN 
-    # =========================================================
+    # --- ฟีเจอร์หน้า ADMIN ---
     if st.session_state.role == "Admin":
         with my_tabs[1]:
             st.header("⚙️ ระบบจัดการบัญชีผู้ใช้งาน (User Management)")
             
             try:
-                # ✅ ปรับเป็น ttl=600 (10 นาที) เพื่อลดการยิง API
-                df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=600)
-                df_users.columns = df_users.columns.str.strip()
-                
-                # ✅ Role_Mapping แทบไม่มีการเปลี่ยน จำไว้ 10 นาทีเช่นกัน
+                # โหลดข้อมูล Role_Mapping
                 df_roles_raw = conn.read(spreadsheet=SHEET_URL, worksheet="Role_Mapping", ttl=600)
                 df_roles_raw.columns = df_roles_raw.columns.str.strip()
                 
@@ -146,7 +180,6 @@ def main_dashboard():
                 main_roles_list = df_roles["Main_Role"].dropna().unique().tolist()
                 all_roles_list = df_roles["Role"].dropna().unique().tolist()
 
-                # --- ส่วนที่ 1: เพิ่มผู้ใช้ใหม่ ---
                 with st.expander("➕ เพิ่มผู้ใช้งานใหม่ (Add New User)", expanded=True):
                     c1, c2 = st.columns(2)
                     
@@ -187,8 +220,6 @@ def main_dashboard():
                                 "Role": selected_role
                             }])
                             updated_df = pd.concat([df_users, new_data], ignore_index=True)
-                            
-                            # อัปเดตเสร็จแล้วสั่งล้างสมอง เพื่อให้ดึงข้อมูลใหม่ 1 ครั้ง
                             conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=updated_df)
                             st.cache_data.clear() 
                             st.success(f"✅ บันทึกบัญชี **{new_user}** ({selected_role}) ลง Database สำเร็จ!")
@@ -196,7 +227,6 @@ def main_dashboard():
 
                 st.divider()
 
-                # --- ส่วนที่ 2: ตารางจัดการผู้ใช้ปัจจุบัน ---
                 st.subheader("🛠️ จัดการบัญชีปัจจุบัน")
                 st.info("แก้ไขข้อมูลในตารางได้โดยตรง | ลบบัญชี: กดคลิกที่ช่องหน้าสุดของแถว แล้วกดปุ่ม Delete บนคีย์บอร์ด")
                 
@@ -215,16 +245,13 @@ def main_dashboard():
                 if st.button("💾 บันทึกการเปลี่ยนแปลงตาราง (Save Changes)"):
                     edited_users = edited_users.dropna(subset=['Username'])
                     conn.update(spreadsheet=SHEET_URL, worksheet="Users", data=edited_users)
-                    st.cache_data.clear() # อัปเดตเสร็จให้ล้างความจำ
+                    st.cache_data.clear() 
                     st.success("✅ อัปเดตข้อมูลผู้ใช้งานลง Google Sheets เรียบร้อยแล้ว!")
                     st.rerun()
 
             except Exception as e:
                 st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูล Database: {e}")
                 
-    # =========================================================
-    # เว้นโครงสำหรับ Role อื่นๆ
-    # =========================================================
     elif st.session_state.role == "IC (ผู้บัญชาการ)":
         with my_tabs[1]:
             st.markdown("**หน้าออกข้อสั่งการ:** (พื้นที่เตรียมพัฒนาต่อ...)")
@@ -235,6 +262,9 @@ def main_dashboard():
         with my_tabs[1]:
             st.markdown(f"**หน้าอัปเดตงาน {st.session_state.role}:** (พื้นที่เตรียมพัฒนาต่อ...)")
 
+# ---------------------------------------------------------
+# ควบคุม Flow หน้าจอ
+# ---------------------------------------------------------
 if not st.session_state.logged_in:
     login_page()
 else:
