@@ -5,15 +5,15 @@ from streamlit_gsheets import GSheetsConnection
 # ---------------------------------------------------------
 # ตั้งค่าหน้าเพจ
 # ---------------------------------------------------------
-st.set_page_config(page_title="PHEM & BCP - สคร.1 เชียงใหม่", layout="wide")
+st.set_page_config(page_title="PHEM & BCP - สคร.1 เชียงใหม่", layout="wide", initial_sidebar_state="collapsed")
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1newH4TiteAxJxKnikgI4L8TA1HRfLaXGB6iFFTBvApc/edit?gid=0#gid=0"
 
 # =========================================================
-# 1. ระบบจัดการ State (ว่าตอนนี้อยู่หน้าไหน)
+# 1. ระบบจัดการ State (ตัวควบคุมทิศทางหน้าเว็บ)
 # =========================================================
 if 'current_page' not in st.session_state:
-    st.session_state.current_page = 'Home' # หน้าที่เปิดได้มี: Home, Login, EOC_Dashboard
+    st.session_state.current_page = 'Home' # หน้าที่มี: Home, Public_EOC, EOC_Dashboard
 if 'selected_eoc' not in st.session_state:
     st.session_state.selected_eoc = None
 if 'logged_in' not in st.session_state:
@@ -25,7 +25,7 @@ if 'role' not in st.session_state:
 if 'main_role' not in st.session_state:
     st.session_state.main_role = ""
 
-# ข้อมูลจำลองสถานะ EOC (รอเชื่อม Sheet)
+# ข้อมูลจำลองสถานะ EOC (รอเชื่อม Sheet ของจริง)
 if 'eoc_statuses' not in st.session_state:
     st.session_state.eoc_statuses = {
         "All Hazard Response": "Watch Mode",
@@ -41,92 +41,116 @@ if 'eoc_statuses' not in st.session_state:
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # ---------------------------------------------------------
-# ฟังก์ชันกำหนดสีตามระดับความรุนแรง
+# ฟังก์ชันดึงสีและไอคอนตามระดับสถานะ
 # ---------------------------------------------------------
 def get_status_style(status):
-    # (สีพื้นหลัง, สีตัวหนังสือ, ไอคอน)
+    # คืนค่า: (สีพื้นหลังกล่อง, สีตัวอักษร, ไอคอน)
     if status == "Watch Mode":
-        return "#EEEEEE", "#424242", "⚪" # เทา (Inactive)
+        return "#EEEEEE", "#424242", "⚪" # เทา
     elif status == "Alert Mode":
-        return "#FFF59D", "#F57F17", "🟡" # เหลือง (Inactive)
+        return "#FFF59D", "#F57F17", "🟡" # เหลือง
     elif status == "Response 1":
-        return "#FFCDD2", "#C62828", "🟠" # แดงอ่อน
+        return "#FFCC80", "#E65100", "🟠" # ส้ม (ตอบโต้ระดับ 1)
     elif status == "Response 2":
-        return "#EF5350", "#FFFFFF", "🔴" # แดงกลาง (ตัวหนังสือขาว)
+        return "#EF9A9A", "#B71C1C", "🔴" # แดงอ่อน (ตอบโต้ระดับ 2)
     elif status == "Response 3":
-        return "#B71C1C", "#FFFFFF", "🚨" # แดงเข้ม (ตัวหนังสือขาว)
+        return "#B71C1C", "#FFFFFF", "🚨" # แดงเข้ม (ตอบโต้ระดับ 3)
     elif status == "Recovery Mode":
         return "#C8E6C9", "#1B5E20", "🟢" # เขียว (ฟื้นฟู)
     return "#FFFFFF", "#000000", "❓"
 
 # =========================================================
-# หน้าที่ 1: PUBLIC HOMEPAGE (เข้าได้ทุกคน)
+# หน้าที่ 1: PUBLIC HOMEPAGE (หน้าแรกสุด สำหรับทุกคน)
 # =========================================================
 def render_homepage():
+    # ซ่อน Sidebar ในหน้าแรก
+    st.markdown("""<style>[data-testid="collapsedControl"] {display: none;}</style>""", unsafe_allow_html=True)
+    
     st.title("🚨 PHEM & BCP Command Center")
     st.markdown("**ศูนย์ปฏิบัติการตอบโต้ภาวะฉุกเฉินทางสาธารณสุข - สคร.1 เชียงใหม่**")
     st.divider()
     
-    st.header("🌐 ภาพรวมสถานการณ์ (Public Dashboard)")
+    st.header("🌐 ภาพรวมสถานการณ์ (คลิกเพื่อดูรายละเอียดแต่ละศูนย์)")
     
-    # ฟังก์ชันช่วยวาดกล่อง EOC และปุ่ม Login
-    def draw_eoc_card(hazard_name):
-        status = st.session_state.eoc_statuses.get(hazard_name, "Watch Mode")
-        bg_color, text_color, icon = get_status_style(status)
-        
-        # วาดกล่องสถานะ
-        html = f"""
-        <div style="background-color: {bg_color}; padding: 15px; border-radius: 8px; margin-bottom: 10px; text-align: center; border: 1px solid rgba(0,0,0,0.1);">
-            <h4 style="margin: 0; color: {text_color}; font-size: 16px;">{icon} {hazard_name}</h4>
-            <p style="margin: 5px 0 0 0; font-weight: bold; color: {text_color}; font-size: 14px;">{status}</p>
-        </div>
-        """
-        st.markdown(html, unsafe_allow_html=True)
-        
-        # วาดปุ่มกดเพื่อแยกล็อกอิน
-        if st.button(f"เข้าสู่ระบบ", key=f"btn_{hazard_name}", use_container_width=True):
-            st.session_state.selected_eoc = hazard_name
-            st.session_state.current_page = 'Login'
-            st.rerun()
-
-    # จัด Layout ตรงกลางสำหรับ All Hazard
+    # ดึงค่าสถานะของ All Hazard
+    all_hazard_stat = st.session_state.eoc_statuses["All Hazard Response"]
+    icon_all = get_status_style(all_hazard_stat)[2]
+    
+    # วาดปุ่ม All Hazard ไว้ตรงกลาง
     col_all1, col_all2, col_all3 = st.columns([1, 2, 1])
     with col_all2:
-        st.subheader("All Hazard Response")
-        draw_eoc_card("All Hazard Response")
+        st.subheader("ร่มใหญ่: All Hazard Response")
+        if st.button(f"{icon_all} All Hazard Response \n\n สถานะ: {all_hazard_stat}", use_container_width=True):
+            st.session_state.selected_eoc = "All Hazard Response"
+            st.session_state.current_page = 'Public_EOC'
+            st.rerun()
 
     st.markdown("<hr style='margin: 30px 0;'>", unsafe_allow_html=True)
-    st.subheader("🎯 Hazard Specific Response (ภัยรายโรค/เหตุการณ์)")
+    st.subheader("🎯 ศูนย์ปฏิบัติการรายเหตุการณ์ (Hazard Specific)")
     
-    # จัด Layout 4 คอลัมน์สำหรับโรคต่างๆ
+    # วาดปุ่มโรคอื่นๆ แบ่งเป็น 4 คอลัมน์
     hazards = list(st.session_state.eoc_statuses.keys())[1:] # ตัด All Hazard ออก
     cols = st.columns(4)
     
     for i, hazard in enumerate(hazards):
-        with cols[i % 4]: # กระจายลงทีละคอลัมน์
-            draw_eoc_card(hazard)
+        with cols[i % 4]:
+            stat = st.session_state.eoc_statuses[hazard]
+            icon = get_status_style(stat)[2]
+            
+            # ปุ่มก้อนใหญ่ กดแล้ววิ่งไปหน้า Public EOC ของโรคนั้น
+            if st.button(f"{icon} {hazard} \n\n {stat}", key=f"btn_{hazard}", use_container_width=True):
+                st.session_state.selected_eoc = hazard
+                st.session_state.current_page = 'Public_EOC'
+                st.rerun()
 
 # =========================================================
-# หน้าที่ 2: LOGIN PAGE (เจาะจงราย EOC)
+# หน้าที่ 2: PUBLIC EOC PAGE (หน้าแสดงข้อมูลสาธารณะ + ช่อง Login)
 # =========================================================
-def render_login():
-    st.button("⬅️ กลับหน้าหลัก (Home)", on_click=lambda: st.session_state.update(current_page='Home'))
-    st.title(f"🔐 เข้าสู่ระบบ EOC: {st.session_state.selected_eoc}")
+def render_public_eoc():
+    st.markdown("""<style>[data-testid="collapsedControl"] {display: none;}</style>""", unsafe_allow_html=True)
     
-    try:
-        df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=600)
-        df_users.columns = df_users.columns.str.strip()
-    except Exception as e:
-        st.error(f"⚠️ ตรวจพบ Error จากระบบหลังบ้าน: {e}")
-        st.stop()
+    if st.button("⬅️ กลับหน้าหลัก (Home)"):
+        st.session_state.current_page = 'Home'
+        st.rerun()
+        
+    current_status = st.session_state.eoc_statuses[st.session_state.selected_eoc]
+    bg_color, text_color, icon = get_status_style(current_status)
+    
+    # ป้ายประกาศสีสันตามสถานะ (คนทั่วไปเห็น)
+    st.markdown(f"""
+    <div style="background-color: {bg_color}; padding: 25px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
+        <h1 style="margin: 0; color: {text_color}; font-size: 2.2em;">{icon} ศูนย์ EOC: {st.session_state.selected_eoc}</h1>
+        <h3 style="margin: 10px 0 0 0; color: {text_color};">ระดับการตอบโต้: {current_status}</h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # แบ่งจอ ซ้าย: ข่าวสาร | ขวา: ล็อกอิน
+    col_public, col_login = st.columns([2, 1.2])
+    
+    with col_public:
+        st.header("📢 ข่าวสารและประกาศสาธารณะ")
+        st.info("พื้นที่สำหรับแสดง Situation Report (SitRep), สรุปสถานการณ์ประจำวัน, และคำแนะนำเบื้องต้นสำหรับประชาชนและเครือข่าย")
+        st.markdown("""
+        * **อัปเดตล่าสุด:** สถานการณ์อยู่ในเกณฑ์ที่ควบคุมได้
+        * **ข้อแนะนำ:** สวมหน้ากากอนามัยและล้างมือบ่อยๆ
+        * *(เตรียมเชื่อมฐานข้อมูลประกาศในอนาคต)*
+        """)
+        
+    with col_login:
+        st.subheader("🔐 สำหรับเจ้าหน้าที่ (Staff Login)")
+        
+        try:
+            df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=600)
+            df_users.columns = df_users.columns.str.strip()
+        except Exception as e:
+            st.error(f"⚠️ โหลดข้อมูลผู้ใช้ไม่ได้: {e}")
+            st.stop()
 
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
         with st.form("login_form"):
-            st.info(f"คุณกำลังเข้าสู่ห้องปฏิบัติการ: **{st.session_state.selected_eoc}**")
+            st.write(f"เข้าสู่พื้นที่ปฏิบัติงาน: **{st.session_state.selected_eoc}**")
             input_user = st.text_input("Username")
             input_pwd = st.text_input("Password", type="password")
-            submit_btn = st.form_submit_button("เข้าสู่ระบบ")
+            submit_btn = st.form_submit_button("Log In เข้าสู่ระบบ", type="primary")
 
             if submit_btn:
                 df_users['Password'] = df_users['Password'].astype(str)
@@ -138,74 +162,70 @@ def render_login():
                     st.session_state.username = input_user
                     st.session_state.role = match.iloc[0]['Role']
                     st.session_state.main_role = match.iloc[0]['Main_Role']
-                    st.session_state.current_page = 'EOC_Dashboard' # เปลี่ยนหน้าไปที่ Dashboard
+                    st.session_state.current_page = 'EOC_Dashboard' 
                     st.rerun()
                 else:
                     st.error("❌ Username หรือ Password ไม่ถูกต้อง!")
 
 # =========================================================
-# หน้าที่ 3: OPERATION DASHBOARD (หลังบ้านของ EOC นั้นๆ)
+# หน้าที่ 3: OPERATION DASHBOARD (หลังบ้านของเจ้าหน้าที่)
 # =========================================================
 def render_dashboard():
     # --- Sidebar ---
-    st.sidebar.header(f"📍 EOC: {st.session_state.selected_eoc}")
+    st.sidebar.header(f"📍 ภารกิจ: {st.session_state.selected_eoc}")
     st.sidebar.divider()
     st.sidebar.header("👤 ข้อมูลปฏิบัติงาน")
     st.sidebar.write(f"**Username:** {st.session_state.username}")
     st.sidebar.write(f"**สายงาน:** {st.session_state.main_role}")
-    st.sidebar.write(f"**ภารกิจ:** {st.session_state.role}")
+    st.sidebar.write(f"**กลุ่มภารกิจ:** {st.session_state.role}")
     
-    if st.sidebar.button("🚪 ออกจากระบบ (กลับหน้าโฮม)"):
+    if st.sidebar.button("🚪 กลับสู่หน้า Public"):
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.role = ""
-        st.session_state.current_page = 'Home'
+        st.session_state.main_role = ""
+        st.session_state.current_page = 'Public_EOC'
         st.rerun()
 
-    # --- ส่วนหัว Dashboard ---
+    # --- หัวหน้า Dashboard ---
     current_status = st.session_state.eoc_statuses[st.session_state.selected_eoc]
     bg_color, text_color, icon = get_status_style(current_status)
     
     st.markdown(f"""
-    <div style="background-color: {bg_color}; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-        <h2 style="margin: 0; color: {text_color};">{icon} ศูนย์ปฏิบัติการ: {st.session_state.selected_eoc}</h2>
-        <h4 style="margin: 5px 0 0 0; color: {text_color};">ระดับสถานการณ์ปัจจุบัน: {current_status}</h4>
+    <div style="background-color: {bg_color}; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <h3 style="margin: 0; color: {text_color};">{icon} กระดานปฏิบัติงานหลังบ้าน: {st.session_state.selected_eoc}</h3>
     </div>
     """, unsafe_allow_html=True)
 
-    # --- เมนูการทำงาน ---
-    st.subheader("กระดานปฏิบัติงาน")
-    tabs_to_show = ["📍 ประกาศและข้อสั่งการ"]
+    # --- กระดาน Tab หลัก ---
+    tabs_to_show = ["🗣️ ข้อสั่งการ IC และวาระการประชุม"]
     
     if st.session_state.role == "Admin" or st.session_state.role == "IC (ผู้บัญชาการ)":
         tabs_to_show.extend(["📈 ติดตามงานทุกกลุ่ม", "⚙️ จัดการผู้ใช้"])
     else:
-        tabs_to_show.extend([f"📥 ส่งงาน ({st.session_state.role})"])
+        tabs_to_show.extend([f"📥 ส่งรายงาน ({st.session_state.role})"])
 
     my_tabs = st.tabs(tabs_to_show)
     
     with my_tabs[0]:
-        st.write("พื้นที่แสดงผล Situation Report (SitRep) และข้อสั่งการจาก IC สำหรับภัยนี้โดยเฉพาะ")
+        st.write("พื้นที่สำหรับรับทราบข้อสั่งการจากผู้บัญชาการเหตุการณ์ (IC)")
         
     if st.session_state.role == "Admin" or st.session_state.role == "IC (ผู้บัญชาการ)":
         with my_tabs[2]:
-            st.info("พื้นที่จัดการบัญชีผู้ใช้งาน (ยกยอดมาจากโค้ดเดิม)")
-            # สามารถนำโค้ด Data Editor ของเดิมมาใส่ในบล็อกนี้ได้เลย
-            
+            st.info("ระบบจัดการบัญชีผู้ใช้งาน (ยกยอดโครงสร้างมาจากของเดิม เตรียมพัฒนาต่อ)")
     else:
         with my_tabs[1]:
-            st.info(f"ฟอร์มรายงานผลการปฏิบัติงานของกลุ่ม: {st.session_state.role}")
+            st.info(f"ฟอร์มรายงานผลการปฏิบัติงานของกลุ่ม: {st.session_state.role} สำหรับเหตุการณ์นี้")
 
 # =========================================================
 # ROUTER: ตัวควบคุมทิศทาง (ว่าหน้าจอควรแสดงอะไร)
 # =========================================================
 if st.session_state.current_page == 'Home':
     render_homepage()
-elif st.session_state.current_page == 'Login':
-    render_login()
+elif st.session_state.current_page == 'Public_EOC':
+    render_public_eoc()
 elif st.session_state.current_page == 'EOC_Dashboard' and st.session_state.logged_in:
     render_dashboard()
 else:
-    # กันเหนียวเผื่อ State รวน
     st.session_state.current_page = 'Home'
     st.rerun()
