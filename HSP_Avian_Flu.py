@@ -78,25 +78,24 @@ def get_status_style(status):
 def render_homepage():
     st.markdown("""<style>[data-testid="collapsedControl"] {display: none;}</style>""", unsafe_allow_html=True)
     
-    st.title("🚨 PHEM & BCP Command Center")
-    st.markdown("**ศูนย์ปฏิบัติการตอบโต้ภาวะฉุกเฉินทางสาธารณสุข - สคร.1 เชียงใหม่**")
+    st.title("🚨 ODPC 1 Emergency Response Operation System <EROS>")
+    st.markdown("**ระบบจัดการ งานตอบโต้ภาวะฉุกเฉินทางสาธารณสุข - สำนักงานป้องกันควบคุมโรคที่.1 เชียงใหม่**")
     st.divider()
     
-    st.header("🌐 ภาพรวมสถานการณ์ (คลิกเพื่อดูรายละเอียดแต่ละศูนย์)")
+    st.header("🌐 All Hazard Response")
     
     all_hazard_stat = st.session_state.eoc_statuses["All Hazard Response"]
     icon_all = get_status_style(all_hazard_stat)[2]
     
     col_all1, col_all2, col_all3 = st.columns([1, 2, 1])
     with col_all2:
-        st.subheader("ร่มใหญ่: All Hazard Response")
         if st.button(f"{icon_all} All Hazard Response \n\n สถานะ: {all_hazard_stat}", use_container_width=True):
             st.session_state.selected_eoc = "All Hazard Response"
             st.session_state.current_page = 'Public_EOC'
             st.rerun()
 
     st.markdown("<hr style='margin: 30px 0;'>", unsafe_allow_html=True)
-    st.subheader("🎯 ศูนย์ปฏิบัติการรายเหตุการณ์ (Hazard Specific)")
+    st.subheader("🎯 Specific Hazard Response")
     
     hazards = list(st.session_state.eoc_statuses.keys())[1:] 
     cols = st.columns(4)
