@@ -126,7 +126,7 @@ def render_public_eoc():
     st.markdown(f"""
     <div style="background-color: {bg_color}; padding: 25px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
         <h1 style="margin: 0; color: {text_color}; font-size: 2.2em;">{icon} ศูนย์ EOC: {st.session_state.selected_eoc}</h1>
-        <h3 style="margin: 10px 0 0 0; color: {text_color};">ระดับการตอบโต้: {current_status}</h3>
+        <h3 style="margin: 10px 0 0 0; color: {text_color};">ระดับสถานการณ์: {current_status}</h3>
     </div>
     """, unsafe_allow_html=True)
     
