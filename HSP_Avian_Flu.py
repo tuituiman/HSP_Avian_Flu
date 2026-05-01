@@ -89,7 +89,7 @@ def render_homepage():
     
     col_all1, col_all2, col_all3 = st.columns([1, 2, 1])
     with col_all2:
-        if st.button(f"{icon_all} All Hazard Response \n\n สถานะ: {all_hazard_stat}", use_container_width=True):
+        if st.button(f"{icon_all} All Hazard Response \n\n สถานะ : {all_hazard_stat}", use_container_width=True):
             st.session_state.selected_eoc = "All Hazard Response"
             st.session_state.current_page = 'Public_EOC'
             st.rerun()
@@ -105,7 +105,7 @@ def render_homepage():
             stat = st.session_state.eoc_statuses[hazard]
             icon = get_status_style(stat)[2]
             
-            if st.button(f"{icon} {hazard} \n\n {stat}", key=f"btn_{hazard}", use_container_width=True):
+            if st.button(f"{icon} {hazard} \n\n สถานะ : {stat}", key=f"btn_{hazard}", use_container_width=True):
                 st.session_state.selected_eoc = hazard
                 st.session_state.current_page = 'Public_EOC'
                 st.rerun()
@@ -126,7 +126,7 @@ def render_public_eoc():
     st.markdown(f"""
     <div style="background-color: {bg_color}; padding: 25px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
         <h1 style="margin: 0; color: {text_color}; font-size: 2.2em;">{icon} ศูนย์ปฏิบัติการภาวะฉุกเฉิน กรณี : {st.session_state.selected_eoc}</h1>
-        <h3 style="margin: 10px 0 0 0; color: {text_color};">ระดับสถานการณ์: {current_status}</h3>
+        <h3 style="margin: 10px 0 0 0; color: {text_color};">ระดับสถานการณ์ : {current_status}</h3>
     </div>
     """, unsafe_allow_html=True)
     
