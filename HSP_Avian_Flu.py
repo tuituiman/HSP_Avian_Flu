@@ -43,13 +43,13 @@ if 'main_role' not in st.session_state:
 if 'eoc_statuses' not in st.session_state:
     st.session_state.eoc_statuses = {
         "All Hazard Response": "Watch Mode",
-        "Disease X": "Watch Mode",
-        "Avian Influenza": "Alert Mode",
-        "Influenza": "Recovery Mode",
-        "อุทกภัย (Floods)": "Response 1",
-        "PM 2.5": "Response 2",
-        "MERS": "Response 3",
-        "VPD (MMR)": "Watch Mode"
+        "โรคอุบัติใหม่ (Disease X)": "Watch Mode",
+        "ไข้หวัดนก (Avian Influenza)": "Alert Mode",
+        "ไข้หวัดใหญ่ (Influenza)": "Recovery Mode",
+        "อุทกภัย ดินโคลนถล่ม": "Response 1",
+        "โรคที่เกี่ยวข้องกับฝุ่นละออง PM 2.5": "Response 2",
+        "โรคทางเดิยหายใจตะวันออกกลาง (MERS)": "Response 3",
+        "โรคที่ป้องกันได้ด้วยวัคซีน MMR": "Watch Mode"
     }
 
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -125,7 +125,7 @@ def render_public_eoc():
     
     st.markdown(f"""
     <div style="background-color: {bg_color}; padding: 25px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
-        <h1 style="margin: 0; color: {text_color}; font-size: 2.2em;">{icon} ศูนย์ EOC: {st.session_state.selected_eoc}</h1>
+        <h1 style="margin: 0; color: {text_color}; font-size: 2.2em;">{icon} ศูนย์ปฏิบัติการภาวะฉุกเฉิน กรณี : {st.session_state.selected_eoc}</h1>
         <h3 style="margin: 10px 0 0 0; color: {text_color};">ระดับสถานการณ์: {current_status}</h3>
     </div>
     """, unsafe_allow_html=True)
