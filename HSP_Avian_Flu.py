@@ -48,7 +48,7 @@ if 'eoc_statuses' not in st.session_state:
         "ไข้หวัดใหญ่ (Influenza)": "Recovery Mode",
         "อุทกภัย ดินโคลนถล่ม": "Response 1",
         "โรคที่เกี่ยวข้องกับฝุ่นละออง PM 2.5": "Response 2",
-        "โรคทางเดิยหายใจตะวันออกกลาง (MERS)": "Response 3",
+        "โรคทางเดินหายใจตะวันออกกลาง (MERS)": "Response 3",
         "โรคที่ป้องกันได้ด้วยวัคซีน MMR": "Watch Mode"
     }
 
