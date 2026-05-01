@@ -8,7 +8,7 @@ from streamlit_gsheets import GSheetsConnection
 st.set_page_config(page_title="PHEM & BCP - สคร.1 เชียงใหม่", layout="wide", initial_sidebar_state="collapsed")
 
 # =========================================================
-# เปลี่ยนฟอนต์ทั้งหน้าเว็บเป็น Prompt (Google Fonts)
+# เปลี่ยนฟอนต์ทั้งหน้าเว็บเป็น Prompt
 # =========================================================
 st.markdown("""
     <style>
@@ -21,6 +21,31 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1newH4TiteAxJxKnikgI4L8TA1HRfLaXGB6iFFTBvApc/edit?gid=0#gid=0"
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# =========================================================
+# ฟังก์ชันดึงข้อมูล EOC จาก Sheet แยก 2 ตาราง (A-B และ D)
+# =========================================================
+@st.cache_data(ttl=60) # จำข้อมูล 1 นาที กันโควตาเต็ม
+def get_eoc_data():
+    try:
+        df = conn.read(spreadsheet=SHEET_URL, worksheet="EOC_Status", ttl=60)
+        df.columns = df.columns.str.strip()
+        
+        # ตาราง 1: ดึงคอลัมน์ EOC List กับ Status
+        df_eoc = df[['EOC List', 'Status']].dropna(subset=['EOC List'])
+        eoc_dict = dict(zip(df_eoc['EOC List'], df_eoc['Status']))
+        
+        # ตาราง 2: ดึงลิสต์สถานะจากคอลัมน์ D
+        status_list = df['Status_list'].dropna().tolist()
+        
+        return eoc_dict, status_list, df_eoc, df
+    except Exception as e:
+        st.error(f"⚠️ ไม่สามารถเชื่อมต่อชีต EOC_Status ได้: {e}")
+        return {}, [], pd.DataFrame(), pd.DataFrame()
+
+# โหลดข้อมูล EOC มาเก็บไว้
+eoc_statuses, eoc_status_list, df_eoc_table, df_full_eoc = get_eoc_data()
 
 # =========================================================
 # 1. ระบบจัดการ State
@@ -38,30 +63,14 @@ if 'role' not in st.session_state:
 if 'main_role' not in st.session_state:
     st.session_state.main_role = ""
 
-# ข้อมูลจำลองสถานะ EOC
-if 'eoc_statuses' not in st.session_state:
-    st.session_state.eoc_statuses = {
-        "All Hazard Response": "Watch Mode",
-        "Disease X": "Watch Mode",
-        "Avian Influenza": "Alert Mode",
-        "Influenza": "Recovery Mode",
-        "อุทกภัย (Floods)": "Response 1",
-        "PM 2.5": "Response 2",
-        "MERS": "Response 3",
-        "VPD (MMR)": "Watch Mode"
-    }
-
-conn = st.connection("gsheets", type=GSheetsConnection)
-
 # ---------------------------------------------------------
-# ฟังก์ชันดึงสี ไอคอน และ การแต่งสีตัวอักษรในปุ่ม (อัปเดต)
+# ฟังก์ชันดึงสี ไอคอน และ สไตล์
 # ---------------------------------------------------------
 def get_status_style(status):
-    # คืนค่า: (สีพื้นหลัง HTML, สีตัวอักษร HTML, ไอคอน, สไตล์ข้อความในปุ่ม Streamlit)
     if status == "Watch Mode":
         return "#F5F5F5", "#616161", "⚪", ":gray[Watch Mode]" 
     elif status == "Alert Mode":
-        return "#FFF9C4", "#F57F17", "🟡", ":orange[Alert Mode]"  # เอาตัวหนาออก
+        return "#FFF9C4", "#F57F17", "🟡", ":orange[Alert Mode]"  
     elif status == "Response 1":
         return "#FFCDD2", "#D32F2F", "🟠", ":red[**Response 1**]" 
     elif status == "Response 2":
@@ -69,7 +78,7 @@ def get_status_style(status):
     elif status == "Response 3":
         return "#B71C1C", "#FFFFFF", "🚨", ":red[**Response 3**]" 
     elif status == "Recovery Mode":
-        return "#C8E6C9", "#1B5E20", "🟢", ":green[Recovery Mode]"  # เอาตัวหนาออก
+        return "#C8E6C9", "#1B5E20", "🟢", ":green[Recovery Mode]"  
     return "#FFFFFF", "#000000", "❓", status
 
 # =========================================================
@@ -82,40 +91,43 @@ def render_homepage():
     st.markdown("**ศูนย์ปฏิบัติการตอบโต้ภาวะฉุกเฉินทางสาธารณสุข - สคร.1 เชียงใหม่**")
     st.divider()
     
+    # ป้องกันบั๊กกรณี Sheet ยังไม่มีข้อมูล
+    if not eoc_statuses:
+        st.warning("กำลังรอการเชื่อมต่อข้อมูล EOC จากฐานข้อมูล...")
+        return
+
     st.header("🌐 ภาพรวมสถานการณ์ (คลิกเพื่อดูรายละเอียดแต่ละศูนย์)")
     
-    # ดึงค่าสถานะของ All Hazard
-    all_hazard_stat = st.session_state.eoc_statuses["All Hazard Response"]
+    all_hazard_key = list(eoc_statuses.keys())[0] # ดึงตัวแรกสุด (All Hazard)
+    all_hazard_stat = eoc_statuses[all_hazard_key]
     _, _, icon_all, btn_text_all = get_status_style(all_hazard_stat)
     
     col_all1, col_all2, col_all3 = st.columns([1, 2, 1])
     with col_all2:
-        st.subheader("ร่มใหญ่: All Hazard Response")
-        # ใส่ตัวแปร btn_text_all ที่ถูกใส่สีไว้แล้วลงในปุ่ม
-        if st.button(f"{icon_all} **All Hazard Response** \n\n {btn_text_all}", use_container_width=True):
-            st.session_state.selected_eoc = "All Hazard Response"
+        st.subheader(f"ร่มใหญ่: {all_hazard_key}")
+        if st.button(f"{icon_all} **{all_hazard_key}** \n\n {btn_text_all}", use_container_width=True):
+            st.session_state.selected_eoc = all_hazard_key
             st.session_state.current_page = 'Public_EOC'
             st.rerun()
 
     st.markdown("<hr style='margin: 30px 0;'>", unsafe_allow_html=True)
     st.subheader("🎯 ศูนย์ปฏิบัติการรายเหตุการณ์ (Hazard Specific)")
     
-    hazards = list(st.session_state.eoc_statuses.keys())[1:] 
+    hazards = list(eoc_statuses.keys())[1:] # ตัดตัวแรกออก
     cols = st.columns(4)
     
     for i, hazard in enumerate(hazards):
         with cols[i % 4]:
-            stat = st.session_state.eoc_statuses[hazard]
+            stat = eoc_statuses[hazard]
             _, _, icon, btn_text = get_status_style(stat)
             
-            # ปุ่มก้อนใหญ่ที่ตัวหนังสือสถานะมีสีสันโดดเด่น
             if st.button(f"{icon} **{hazard}** \n\n {btn_text}", key=f"btn_{hazard}", use_container_width=True):
                 st.session_state.selected_eoc = hazard
                 st.session_state.current_page = 'Public_EOC'
                 st.rerun()
 
 # =========================================================
-# หน้าที่ 2: PUBLIC EOC PAGE (หน้าแสดงข้อมูลสาธารณะ + ช่อง Login)
+# หน้าที่ 2: PUBLIC EOC PAGE
 # =========================================================
 def render_public_eoc():
     st.markdown("""<style>[data-testid="collapsedControl"] {display: none;}</style>""", unsafe_allow_html=True)
@@ -124,7 +136,7 @@ def render_public_eoc():
         st.session_state.current_page = 'Home'
         st.rerun()
         
-    current_status = st.session_state.eoc_statuses[st.session_state.selected_eoc]
+    current_status = eoc_statuses.get(st.session_state.selected_eoc, "Watch Mode")
     bg_color, text_color, icon, _ = get_status_style(current_status) 
     
     st.markdown(f"""
@@ -139,15 +151,9 @@ def render_public_eoc():
     with col_public:
         st.header("📢 ข่าวสารและประกาศสาธารณะ")
         st.info("พื้นที่สำหรับแสดง Situation Report (SitRep), สรุปสถานการณ์ประจำวัน, และคำแนะนำเบื้องต้นสำหรับประชาชนและเครือข่าย")
-        st.markdown("""
-        * **อัปเดตล่าสุด:** สถานการณ์อยู่ในเกณฑ์ที่ควบคุมได้
-        * **ข้อแนะนำ:** สวมหน้ากากอนามัยและล้างมือบ่อยๆ
-        * *(เตรียมเชื่อมฐานข้อมูลประกาศในอนาคต)*
-        """)
         
     with col_login:
         st.subheader("🔐 สำหรับเจ้าหน้าที่ (Staff Login)")
-        
         try:
             df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Users", ttl=600)
             df_users.columns = df_users.columns.str.strip()
@@ -177,7 +183,7 @@ def render_public_eoc():
                     st.error("❌ Username หรือ Password ไม่ถูกต้อง!")
 
 # =========================================================
-# หน้าที่ 3: OPERATION DASHBOARD (หลังบ้านของเจ้าหน้าที่)
+# หน้าที่ 3: OPERATION DASHBOARD
 # =========================================================
 def render_dashboard():
     st.sidebar.header(f"📍 ภารกิจ: {st.session_state.selected_eoc}")
@@ -195,7 +201,7 @@ def render_dashboard():
         st.session_state.current_page = 'Public_EOC'
         st.rerun()
 
-    current_status = st.session_state.eoc_statuses[st.session_state.selected_eoc]
+    current_status = eoc_statuses.get(st.session_state.selected_eoc, "Watch Mode")
     bg_color, text_color, icon, _ = get_status_style(current_status)
     
     st.markdown(f"""
@@ -207,7 +213,7 @@ def render_dashboard():
     tabs_to_show = ["🗣️ ข้อสั่งการ IC และวาระการประชุม"]
     
     if st.session_state.role == "Admin" or st.session_state.role == "IC (ผู้บัญชาการ)":
-        tabs_to_show.extend(["📈 ติดตามงานทุกกลุ่ม", "⚙️ จัดการผู้ใช้"])
+        tabs_to_show.extend(["📝 อัปเดตสถานะ EOC", "⚙️ จัดการผู้ใช้"])
     else:
         tabs_to_show.extend([f"📥 ส่งรายงาน ({st.session_state.role})"])
 
@@ -217,6 +223,29 @@ def render_dashboard():
         st.write("พื้นที่สำหรับรับทราบข้อสั่งการจากผู้บัญชาการเหตุการณ์ (IC)")
         
     if st.session_state.role == "Admin" or st.session_state.role == "IC (ผู้บัญชาการ)":
+        
+        # --- แท็บอัปเดตสถานะ EOC ทะลุเข้า Sheet ---
+        with my_tabs[1]:
+            st.header("📝 อัปเดตระดับความรุนแรง EOC")
+            st.info("แก้ไขสถานะในคอลัมน์ 'Status' แล้วกดบันทึกเพื่ออัปเดตหน้า Homepage ทันที")
+            
+            edited_eoc = st.data_editor(
+                df_eoc_table,
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "EOC List": st.column_config.TextColumn("รายชื่อศูนย์ EOC", disabled=True),
+                    "Status": st.column_config.SelectboxColumn("สถานะ (Status)", options=eoc_status_list)
+                }
+            )
+            
+            if st.button("💾 บันทึกการเปลี่ยนสถานะ EOC", type="primary"):
+                df_full_eoc.update(edited_eoc) # เอาที่แก้ไปสวมทับตารางหลัก (จะได้ไม่ทำคอลัมน์ D พัง)
+                conn.update(spreadsheet=SHEET_URL, worksheet="EOC_Status", data=df_full_eoc)
+                st.cache_data.clear() # ล้างความจำเพื่อดึงข้อมูลอัปเดต
+                st.success("✅ อัปเดตสถานะ EOC ขึ้นหน้า Home เรียบร้อย!")
+                st.rerun()
+
         with my_tabs[2]:
             st.info("ระบบจัดการบัญชีผู้ใช้งาน (ยกยอดโครงสร้างมาจากของเดิม เตรียมพัฒนาต่อ)")
     else:
