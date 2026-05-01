@@ -14,7 +14,6 @@ st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;700&display=swap');
         
-        /* บังคับใช้ฟอนต์ Prompt กับทุกองค์ประกอบในเว็บ */
         html, body, [class*="css"], [class*="st-"], p, h1, h2, h3, h4, h5, h6, span, div, label, button, input, select, textarea {
             font-family: 'Prompt', sans-serif !important;
         }
@@ -24,7 +23,7 @@ st.markdown("""
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1newH4TiteAxJxKnikgI4L8TA1HRfLaXGB6iFFTBvApc/edit?gid=0#gid=0"
 
 # =========================================================
-# 1. ระบบจัดการ State (ตัวควบคุมทิศทางหน้าเว็บ)
+# 1. ระบบจัดการ State
 # =========================================================
 if 'current_page' not in st.session_state:
     st.session_state.current_page = 'Home' 
@@ -43,59 +42,63 @@ if 'main_role' not in st.session_state:
 if 'eoc_statuses' not in st.session_state:
     st.session_state.eoc_statuses = {
         "All Hazard Response": "Watch Mode",
-        "โรคอุบัติใหม่ (Disease X)": "Watch Mode",
-        "ไข้หวัดนก (Avian Influenza)": "Alert Mode",
-        "ไข้หวัดใหญ่ (Influenza)": "Recovery Mode",
-        "อุทกภัย ดินโคลนถล่ม": "Response 1",
-        "โรคที่เกี่ยวข้องกับฝุ่นละออง PM 2.5": "Response 2",
-        "โรคทางเดินหายใจตะวันออกกลาง (MERS)": "Response 3",
-        "โรคที่ป้องกันได้ด้วยวัคซีน MMR": "Watch Mode"
+        "Disease X": "Watch Mode",
+        "Avian Influenza": "Alert Mode",
+        "Influenza": "Recovery Mode",
+        "อุทกภัย (Floods)": "Response 1",
+        "PM 2.5": "Response 2",
+        "MERS": "Response 3",
+        "VPD (MMR)": "Watch Mode"
     }
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # ---------------------------------------------------------
-# ฟังก์ชันดึงสีและไอคอนตามระดับสถานะ
+# ฟังก์ชันดึงสี ไอคอน และ **การแต่งสีตัวอักษรในปุ่ม**
 # ---------------------------------------------------------
 def get_status_style(status):
+    # คืนค่า: (สีพื้นหลัง HTML, สีตัวอักษร HTML, ไอคอน, สไตล์ข้อความในปุ่ม Streamlit)
     if status == "Watch Mode":
-        return "#EEEEEE", "#424242", "⚪" 
+        return "#F5F5F5", "#616161", "⚪", ":gray[Watch Mode]" 
     elif status == "Alert Mode":
-        return "#FFF59D", "#F57F17", "🟡" 
+        return "#FFF9C4", "#F57F17", "🟡", ":orange[**Alert Mode**]" 
     elif status == "Response 1":
-        return "#FFCC80", "#E65100", "🟠" 
+        return "#FFCDD2", "#D32F2F", "🟠", ":red[**Response 1**]" 
     elif status == "Response 2":
-        return "#EF9A9A", "#B71C1C", "🔴" 
+        return "#E53935", "#FFFFFF", "🔴", ":red[**Response 2**]" 
     elif status == "Response 3":
-        return "#B71C1C", "#FFFFFF", "🚨" 
+        return "#B71C1C", "#FFFFFF", "🚨", ":red[**Response 3**]" 
     elif status == "Recovery Mode":
-        return "#C8E6C9", "#1B5E20", "🟢" 
-    return "#FFFFFF", "#000000", "❓"
+        return "#C8E6C9", "#1B5E20", "🟢", ":green[**Recovery Mode**]" 
+    return "#FFFFFF", "#000000", "❓", status
 
 # =========================================================
-# หน้าที่ 1: PUBLIC HOMEPAGE (หน้าแรกสุด สำหรับทุกคน)
+# หน้าที่ 1: PUBLIC HOMEPAGE
 # =========================================================
 def render_homepage():
     st.markdown("""<style>[data-testid="collapsedControl"] {display: none;}</style>""", unsafe_allow_html=True)
     
-    st.title("🚨 ODPC 1 Emergency Response Operation System <EROS>")
-    st.markdown("**ระบบจัดการ งานตอบโต้ภาวะฉุกเฉินทางสาธารณสุข - สำนักงานป้องกันควบคุมโรคที่.1 เชียงใหม่**")
+    st.title("🚨 PHEM & BCP Command Center")
+    st.markdown("**ศูนย์ปฏิบัติการตอบโต้ภาวะฉุกเฉินทางสาธารณสุข - สคร.1 เชียงใหม่**")
     st.divider()
     
-    st.header("🌐 All Hazard Response")
+    st.header("🌐 ภาพรวมสถานการณ์ (คลิกเพื่อดูรายละเอียดแต่ละศูนย์)")
     
+    # ดึงค่าสถานะของ All Hazard
     all_hazard_stat = st.session_state.eoc_statuses["All Hazard Response"]
-    icon_all = get_status_style(all_hazard_stat)[2]
+    _, _, icon_all, btn_text_all = get_status_style(all_hazard_stat)
     
     col_all1, col_all2, col_all3 = st.columns([1, 2, 1])
     with col_all2:
-        if st.button(f"{icon_all} All Hazard Response \n\n สถานะ : {all_hazard_stat}", use_container_width=True):
+        st.subheader("ร่มใหญ่: All Hazard Response")
+        # ใส่ตัวแปร btn_text_all ที่ถูกใส่สีไว้แล้วลงในปุ่ม
+        if st.button(f"{icon_all} **All Hazard Response** \n\n {btn_text_all}", use_container_width=True):
             st.session_state.selected_eoc = "All Hazard Response"
             st.session_state.current_page = 'Public_EOC'
             st.rerun()
 
     st.markdown("<hr style='margin: 30px 0;'>", unsafe_allow_html=True)
-    st.subheader("🎯 Specific Hazard Response")
+    st.subheader("🎯 ศูนย์ปฏิบัติการรายเหตุการณ์ (Hazard Specific)")
     
     hazards = list(st.session_state.eoc_statuses.keys())[1:] 
     cols = st.columns(4)
@@ -103,9 +106,10 @@ def render_homepage():
     for i, hazard in enumerate(hazards):
         with cols[i % 4]:
             stat = st.session_state.eoc_statuses[hazard]
-            icon = get_status_style(stat)[2]
+            _, _, icon, btn_text = get_status_style(stat)
             
-            if st.button(f"{icon} {hazard} \n\n สถานะ : {stat}", key=f"btn_{hazard}", use_container_width=True):
+            # ปุ่มก้อนใหญ่ที่ตัวหนังสือสถานะมีสีสันโดดเด่น
+            if st.button(f"{icon} **{hazard}** \n\n {btn_text}", key=f"btn_{hazard}", use_container_width=True):
                 st.session_state.selected_eoc = hazard
                 st.session_state.current_page = 'Public_EOC'
                 st.rerun()
@@ -121,12 +125,12 @@ def render_public_eoc():
         st.rerun()
         
     current_status = st.session_state.eoc_statuses[st.session_state.selected_eoc]
-    bg_color, text_color, icon = get_status_style(current_status)
+    bg_color, text_color, icon, _ = get_status_style(current_status) # ดึงตัวแปรสีมาใช้ตกแต่ง HTML
     
     st.markdown(f"""
     <div style="background-color: {bg_color}; padding: 25px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
-        <h1 style="margin: 0; color: {text_color}; font-size: 2.2em;">{icon} ศูนย์ปฏิบัติการภาวะฉุกเฉิน กรณี : {st.session_state.selected_eoc}</h1>
-        <h3 style="margin: 10px 0 0 0; color: {text_color};">ระดับสถานการณ์ : {current_status}</h3>
+        <h1 style="margin: 0; color: {text_color}; font-size: 2.2em;">{icon} ศูนย์ EOC: {st.session_state.selected_eoc}</h1>
+        <h3 style="margin: 10px 0 0 0; color: {text_color};">ระดับการตอบโต้: {current_status}</h3>
     </div>
     """, unsafe_allow_html=True)
     
@@ -192,7 +196,7 @@ def render_dashboard():
         st.rerun()
 
     current_status = st.session_state.eoc_statuses[st.session_state.selected_eoc]
-    bg_color, text_color, icon = get_status_style(current_status)
+    bg_color, text_color, icon, _ = get_status_style(current_status)
     
     st.markdown(f"""
     <div style="background-color: {bg_color}; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
@@ -220,7 +224,7 @@ def render_dashboard():
             st.info(f"ฟอร์มรายงานผลการปฏิบัติงานของกลุ่ม: {st.session_state.role} สำหรับเหตุการณ์นี้")
 
 # =========================================================
-# ROUTER: ตัวควบคุมทิศทาง (ว่าหน้าจอควรแสดงอะไร)
+# ROUTER
 # =========================================================
 if st.session_state.current_page == 'Home':
     render_homepage()
