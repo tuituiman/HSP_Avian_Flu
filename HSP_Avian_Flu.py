@@ -54,14 +54,14 @@ if 'eoc_statuses' not in st.session_state:
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # ---------------------------------------------------------
-# ฟังก์ชันดึงสี ไอคอน และ **การแต่งสีตัวอักษรในปุ่ม**
+# ฟังก์ชันดึงสี ไอคอน และ การแต่งสีตัวอักษรในปุ่ม (อัปเดต)
 # ---------------------------------------------------------
 def get_status_style(status):
     # คืนค่า: (สีพื้นหลัง HTML, สีตัวอักษร HTML, ไอคอน, สไตล์ข้อความในปุ่ม Streamlit)
     if status == "Watch Mode":
         return "#F5F5F5", "#616161", "⚪", ":gray[Watch Mode]" 
     elif status == "Alert Mode":
-        return "#FFF9C4", "#F57F17", "🟡", ":orange[**Alert Mode**]" 
+        return "#FFF9C4", "#F57F17", "🟡", ":orange[Alert Mode]"  # เอาตัวหนาออก
     elif status == "Response 1":
         return "#FFCDD2", "#D32F2F", "🟠", ":red[**Response 1**]" 
     elif status == "Response 2":
@@ -69,7 +69,7 @@ def get_status_style(status):
     elif status == "Response 3":
         return "#B71C1C", "#FFFFFF", "🚨", ":red[**Response 3**]" 
     elif status == "Recovery Mode":
-        return "#C8E6C9", "#1B5E20", "🟢", ":green[**Recovery Mode**]" 
+        return "#C8E6C9", "#1B5E20", "🟢", ":green[Recovery Mode]"  # เอาตัวหนาออก
     return "#FFFFFF", "#000000", "❓", status
 
 # =========================================================
@@ -125,7 +125,7 @@ def render_public_eoc():
         st.rerun()
         
     current_status = st.session_state.eoc_statuses[st.session_state.selected_eoc]
-    bg_color, text_color, icon, _ = get_status_style(current_status) # ดึงตัวแปรสีมาใช้ตกแต่ง HTML
+    bg_color, text_color, icon, _ = get_status_style(current_status) 
     
     st.markdown(f"""
     <div style="background-color: {bg_color}; padding: 25px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
